@@ -1329,8 +1329,10 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
   buildPicker('speedPick');
   renderSpeed();
   if(!state.msSel['drillPick']||!state.msSel['drillPick'].size){const f0=state.systems.find(s=>s.hasData);state.msSel['drillPick']=new Set(f0?[f0.name]:[]);}
+  if(!state.msSel['cmpPick']||!state.msSel['cmpPick'].size){state.msSel['cmpPick']=new Set(state.systems.filter(s=>s.hasData).slice(0,2).map(s=>s.name));}
   buildPicker('cmpPick');buildPicker('rptPick');buildPicker('drillPick');
   drawDrilldown();
+  if(pickedNames('cmpPick').length>=2)runCompare();
   updateRptScope();
   railState();                       // unlock the sidebar's result views
   setView('rankings');               // jump straight to the prioritized list
@@ -2081,7 +2083,6 @@ function runCompare(){
   cmpBarChart=new Chart(document.getElementById('cmpBar'),cmpBarCfg(sel,false));
   if(cmpLineChart)cmpLineChart.destroy();
   cmpLineChart=new Chart(document.getElementById('cmpLine'),cmpLineCfg(sel,false));
-  out.scrollIntoView({behavior:'smooth',block:'nearest'});
 }
 function downloadCompareCSV(){
   const sel=cmpSelection();if(!sel)return;
