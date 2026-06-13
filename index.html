@@ -88,6 +88,15 @@
   .view{display:none} .view.active{display:block;animation:fadeUp .28s ease}
   @keyframes fadeUp{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
   .hidden{display:none!important}
+  /* boot splash for auto-load on the hosted site */
+  #bootSplash{position:fixed;inset:0;z-index:200;background:linear-gradient(180deg,#0e1730,#0b1430);display:none;align-items:center;justify-content:center;color:#cbd5ec}
+  #bootSplash.on{display:flex}
+  #bootSplash .boot-card{text-align:center;max-width:340px;padding:20px}
+  #bootSplash .boot-logo{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,var(--blue) 28%,var(--orange));display:flex;align-items:center;justify-content:center;margin:0 auto 20px;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+  #bootSplash .boot-spin{width:42px;height:42px;border:4px solid rgba(255,255,255,.16);border-top-color:var(--orange);border-radius:50%;margin:0 auto 16px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #bootSplash .boot-brand{font-size:17px;font-weight:800;color:#fff;margin-bottom:6px}
+  #bootSplash .boot-msg{font-size:13px;font-weight:600;color:#9fb0d2}
   @media(max-width:900px){
     body{grid-template-columns:1fr}
     .sidebar{position:fixed;left:0;top:0;width:250px;transform:translateX(-100%);transition:transform .2s;box-shadow:0 0 40px rgba(0,0,0,.4)}
@@ -342,6 +351,16 @@
 </head>
 <body>
 
+<!-- ================= BOOT SPLASH (auto-load) ================= -->
+<div id="bootSplash">
+  <div class="boot-card">
+    <div class="boot-logo"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="13" width="4.2" height="8" rx="1.3" fill="#fff"/><rect x="9.9" y="8" width="4.2" height="13" rx="1.3" fill="#fff"/><rect x="16.8" y="3" width="4.2" height="18" rx="1.3" fill="#fff" opacity="0.85"/></svg></div>
+    <div class="boot-brand">Corridor Ranker</div>
+    <div class="boot-spin"></div>
+    <div class="boot-msg" id="bootMsg">Loading the latest corridor data…</div>
+  </div>
+</div>
+
 <!-- ================= SIDEBAR ================= -->
 <aside class="sidebar" id="sidebar">
   <div class="sb-brand">
@@ -355,7 +374,7 @@
     <div class="sb-sec">Analysis</div>
     <button class="sb-item locked" data-nav="rankings" onclick="setView('rankings')"><span class="sb-ico">🏆</span> Rankings</button>
     <button class="sb-item locked" data-nav="explore" onclick="setView('explore')"><span class="sb-ico">🔍</span> Explore</button>
-    <button class="sb-item locked" data-nav="reports" onclick="setView('reports')"><span class="sb-ico">📑</span> Reports &amp; Coverage</button>
+    <button class="sb-item locked" data-nav="reports" onclick="setView('reports')"><span class="sb-ico">📑</span> Reports</button>
   </nav>
   <div class="sb-foot">Runs entirely in your browser.<br>No data leaves your computer.</div>
 </aside>
@@ -378,13 +397,13 @@
 <div class="panel" id="panelImport" data-view="upload">
   <div class="panel-head">
     <div class="panel-ico blue">📂</div>
-    <div><h2>Step 1 — Get your data</h2><p>Pick Option A or Option B for the traffic data. The corridor list at the bottom is needed either way.</p></div>
+    <div><h2>Step 1 — Get your data</h2><p>New here? Just click <b>Load the latest data</b> below, then press Process. Bringing your own files? Open the uploader.</p></div>
   </div>
   <div class="panel-body">
 
     <!-- OPTION A : AUTOMATIC -->
     <div class="opt-card rec">
-      <div class="opt-head"><span class="opt-letter">A</span><b>Automatic</b><span class="opt-rec">EASIEST — ON THE HOSTED SITE</span></div>
+      <div class="opt-head"><b>Load the latest data</b><span class="opt-rec">RECOMMENDED — ON THIS SITE</span></div>
       <p class="lead">One click loads the data this website's robot already fetched from RITIS (refreshed every Monday night). Nothing to download, nothing to set up.</p>
       <div class="pick-actions">
         <button class="btn-recalc" onclick="loadRepoData()">📦 Load the latest data</button>
@@ -441,54 +460,51 @@
       </details>
     </div>
 
-    <div class="or-divider"><span>OR</span></div>
-
-    <!-- OPTION B : MANUAL UPLOAD -->
-    <div class="opt-card">
-      <div class="opt-head"><span class="opt-letter">B</span><b>Upload the files yourself</b></div>
-      <p class="lead">Drag in the two CSVs you downloaded from RITIS Massive Data Downloader. Works everywhere, no setup.</p>
-      <div class="file-grid">
-        <label class="drop" id="slot1" for="file1">
-          <span class="check">✓</span>
-          <span class="file-ico">🚗</span>
-          <span class="tag">File 1</span>
-          <h3>Traffic data</h3>
-          <p class="desc">The big CSV — speeds and travel times for every segment. Large files are fine; the tool streams them.</p>
-          <span class="cta">Choose / drop file</span>
-          <input type="file" id="file1" accept=".csv">
-          <div class="status" id="status1">Waiting for file…</div>
-        </label>
-        <label class="drop" id="slot2" for="file2">
-          <span class="check">✓</span>
-          <span class="file-ico">📏</span>
-          <span class="tag">File 2</span>
-          <h3>Segment lengths</h3>
-          <p class="desc">The small "XD Identification" CSV that comes with the download — it tells the tool how long each segment is.</p>
-          <span class="cta">Choose / drop file</span>
-          <input type="file" id="file2" accept=".csv">
-          <div class="status" id="status2">Waiting for file…</div>
-        </label>
-      </div>
-    </div>
-
-    <!-- REQUIRED FOR BOTH -->
-    <div class="req-strip">
-      <div class="diag-sub" style="margin-bottom:10px">NEEDED FOR BOTH OPTIONS</div>
-      <label class="drop" id="slot3" for="file3" style="text-align:left;display:block">
-        <span class="check">✓</span>
-        <span style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
-          <span class="file-ico" style="margin:0">🛣️</span>
-          <span style="flex:1;min-width:240px">
-            <h3 style="display:inline">Your corridor list<span class="req-badge">REQUIRED</span></h3>
-            <span class="tag" style="margin-left:8px">File 3</span>
-            <p class="desc" style="min-height:0;margin:6px 0 8px">Which roads you want ranked: corridor names, XD segment IDs, signal counts (3_Corridor_Data.csv). On the hosted website this loads by itself.</p>
+    <details class="method" style="margin-top:16px">
+      <summary>Upload your own files instead — self-hosting or custom data</summary>
+      <div class="mbody">
+        <p class="lead" style="margin:8px 0 12px">Drag in the two CSVs from the RITIS Massive Data Downloader, plus your corridor list. On this hosted site the corridor list loads by itself.</p>
+        <div class="file-grid">
+          <label class="drop" id="slot1" for="file1">
+            <span class="check">✓</span>
+            <span class="file-ico">🚗</span>
+            <span class="tag">File 1</span>
+            <h3>Traffic data</h3>
+            <p class="desc">The big CSV — speeds and travel times for every segment. Large files are fine; the tool streams them.</p>
             <span class="cta">Choose / drop file</span>
-          </span>
-        </span>
-        <input type="file" id="file3" accept=".csv">
-        <div class="status" id="status3">Waiting for file…</div>
-      </label>
-    </div>
+            <input type="file" id="file1" accept=".csv">
+            <div class="status" id="status1">Waiting for file…</div>
+          </label>
+          <label class="drop" id="slot2" for="file2">
+            <span class="check">✓</span>
+            <span class="file-ico">📏</span>
+            <span class="tag">File 2</span>
+            <h3>Segment lengths</h3>
+            <p class="desc">The small "XD Identification" CSV that comes with the download — it tells the tool how long each segment is.</p>
+            <span class="cta">Choose / drop file</span>
+            <input type="file" id="file2" accept=".csv">
+            <div class="status" id="status2">Waiting for file…</div>
+          </label>
+        </div>
+        <div class="req-strip">
+          <div class="diag-sub" style="margin-bottom:10px">YOUR CORRIDOR LIST</div>
+          <label class="drop" id="slot3" for="file3" style="text-align:left;display:block">
+            <span class="check">✓</span>
+            <span style="display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap">
+              <span class="file-ico" style="margin:0">🛣️</span>
+              <span style="flex:1;min-width:240px">
+                <h3 style="display:inline">Your corridor list<span class="req-badge">REQUIRED</span></h3>
+                <span class="tag" style="margin-left:8px">File 3</span>
+                <p class="desc" style="min-height:0;margin:6px 0 8px">Which roads you want ranked: corridor names, XD segment IDs, signal counts (3_Corridor_Data.csv).</p>
+                <span class="cta">Choose / drop file</span>
+              </span>
+            </span>
+            <input type="file" id="file3" accept=".csv">
+            <div class="status" id="status3">Waiting for file…</div>
+          </label>
+        </div>
+      </div>
+    </details>
 
   </div>
 </div>
@@ -497,9 +513,12 @@
 <div class="panel" id="panelSettings" data-view="upload">
   <div class="panel-head">
     <div class="panel-ico orange">⚙️</div>
-    <div><h2>Step 2 — Settings</h2><p>Defaults follow the VDOT workflow (Tue–Thu · AM, Mid-day, PM).</p></div>
+    <div><h2>Step 2 — Process</h2><p>Defaults are set (Tue–Thu · AM / Mid-day / PM). Just press Process — or open settings to fine-tune.</p></div>
   </div>
   <div class="panel-body">
+    <details class="method" style="margin-bottom:12px">
+    <summary>Analysis settings — optional (defaults are already set)</summary>
+    <div class="mbody">
     <div class="settings-grid">
       <div class="setting-card">
         <label class="head">AM peak <span class="q" title="Morning analysis window. Delay is measured for 15-min records whose hour falls in this range.">?</span></label>
@@ -530,6 +549,7 @@
         <div class="range-pair"><input type="date" id="dateFrom"><span>to</span><input type="date" id="dateTo"></div>
       </div>
     </div>
+    </div></details>
 
     <div class="run-bar">
       <button class="btn-go" id="processBtn" disabled><span>▶</span> Process Data</button>
@@ -562,10 +582,10 @@
   <div class="kpi-row reveal" id="kpiRow" data-view="rankings"></div>
 
   <!-- Coverage diagnostics -->
-  <div class="panel reveal" id="diagPanel" data-view="reports">
+  <div class="panel reveal" id="diagPanel" data-view="upload">
     <div class="panel-head">
       <div class="panel-ico orange">🩺</div>
-      <div><h2>Data Coverage Diagnostics</h2><p>Does your RITIS download actually cover your corridor definitions?</p></div>
+      <div><h2>Data coverage check</h2><p>Confirms your data covers every corridor. Appears here after you press Process.</p></div>
     </div>
     <div class="panel-body" id="diagBody"></div>
   </div>
@@ -768,7 +788,7 @@ const VIEW_META={
   upload:['Upload Data','Load your corridor + probe data, set the window, and process'],
   rankings:['Rankings','Prioritized corridors by OCRA score'],
   explore:['Explore Corridors','Hourly travel time, delay & speed — driven by your selection'],
-  reports:['Reports & Coverage','Build a PDF / CSV report and check data coverage']
+  reports:['Reports','Build a print-ready PDF / CSV report']
 };
 function setView(name){
   if(name!=='upload' && !state.systems)name='upload';          // result views locked until processed
@@ -1060,6 +1080,7 @@ function processData(){
         progFill.style.width='0%';
         btn2.disabled=false;btn2.innerHTML='<span>▶</span> Process Data';
         toast('Processing stopped — check File 1 columns');
+        showBoot(false);setView('upload');
         return;
       }
       if(matched===0){
@@ -1069,6 +1090,7 @@ function processData(){
         progFill.style.width='0%';
         btn2.disabled=false;btn2.innerHTML='<span>▶</span> Process Data';
         toast('Processing stopped — no usable records');
+        showBoot(false);setView('upload');
         return;
       }
       progLabel.textContent='Aggregating corridors…';
@@ -1213,6 +1235,7 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
     const b=document.getElementById('processBtn');
     b.disabled=false;b.innerHTML='<span>▶</span> Process Data';
     toast('No records in the selected days/periods');
+    showBoot(false);setView('upload');
     return;
   }
   recalcScores();
@@ -1236,6 +1259,7 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
   updateRptScope();
   railState();                       // unlock the sidebar's result views
   setView('rankings');               // jump straight to the prioritized list
+  showBoot(false);
   toast('Processing complete');
 }
 
@@ -2504,7 +2528,7 @@ function ritisPreset(days){
   document.getElementById('ritisEnd').value=iso(e);
   ritisPrefillBody();
 }
-async function loadRepoData(){
+async function loadRepoData(auto){
   if(location.protocol==='file:'){
     ritisStatusMsg('This button reads the data/ folder from a web server — it cannot work when the page is opened directly from disk (browser security). Two options: (A) host on GitHub Pages with the automation kit — the intended setup; or (B) quick local test: put this file in a folder with a data\\ subfolder, open Command Prompt there, run  python -m http.server 8000  and browse to http://localhost:8000/. Drag-and-drop in Step 1 always works regardless.',true);
     return;
@@ -2540,13 +2564,36 @@ async function loadRepoData(){
       }
     }
     if(!got.length){
-      ritisStatusMsg('✗ Nothing found under '+base+' — is this page hosted from the repository (GitHub Pages), and has the Action run at least once?',true);return;
+      ritisStatusMsg('✗ Nothing found under '+base+' — is this page hosted from the repository (GitHub Pages), and has the Action run at least once?',true);
+      if(auto){showBoot(false);setView('upload');}
+      return;
     }
-    ritisStatusMsg('✓ Loaded '+got.join(', ')+(meta?(' · data window '+meta.start+' → '+meta.end_inclusive+' · generated '+meta.generated):'')+'. Review Step 2 and press Process.');
+    ritisStatusMsg('✓ Loaded '+got.join(', ')+(meta?(' · data window '+meta.start+' → '+meta.end_inclusive+' · generated '+meta.generated):'')+(auto?'.':'. Review Step 2 and press Process.'));
     toast('Repository data loaded');
+    if(auto){                              // auto-process so the user lands on Rankings
+      showBoot(true,'Analyzing probe data…');
+      let tries=0;
+      const t=setInterval(()=>{
+        if(state.file1&&state.segMiles&&state.corridors){clearInterval(t);processData();}
+        else if(++tries>150){clearInterval(t);showBoot(false);setView('upload');}
+      },40);
+    }
   }catch(e){
     ritisStatusMsg('✗ Repo load failed: '+e.message+' (if opened as a local file, this only works when served over http/https)',true);
+    if(auto){showBoot(false);setView('upload');}
   }
+}
+function showBoot(on,msg){
+  const b=document.getElementById('bootSplash'); if(!b)return;
+  if(msg){const m=document.getElementById('bootMsg'); if(m)m.textContent=msg;}
+  b.classList.toggle('on',!!on);
+}
+function autoStart(){
+  // hosted: auto-load + auto-process the repo dataset so returning visitors land on Rankings
+  if(location.protocol==='file:'){ setView('upload'); return; }
+  showBoot(true,'Loading the latest corridor data…');
+  loadRepoData(true);
+  setTimeout(()=>{ if(!state.systems){ showBoot(false); const a=document.querySelector('.sb-item.active'); if(!a||a.dataset.nav!=='rankings')setView('upload'); } },60000);
 }
 async function downloadGithubKit(){
   if(typeof JSZip==='undefined'){toast('JSZip not loaded');return;}
@@ -2908,15 +2955,7 @@ function filterOcra(q){
 window.addEventListener('scroll',()=>{
   document.getElementById('backTop').classList.toggle('show',window.scrollY>700);
 },{passive:true});
-/* hosted site: pre-load the corridor list quietly so new users start green */
-if(location.protocol==='http:'||location.protocol==='https:'){
-  fetch('data/3_Corridor_Data.csv').then(r=>r.ok?r.arrayBuffer():null).then(b=>{
-    if(b){
-      handleFile(3,new File([b],'3_Corridor_Data.csv',{type:'text/csv'}));
-      toast('Corridor list loaded from this website');
-    }
-  }).catch(()=>{});
-}
+/* hosted site: data is auto-loaded + processed by autoStart() at the bottom of this script */
 
 /* proactive hint: repo loading needs a web server */
 if(location.protocol==='file:'){
@@ -2933,7 +2972,7 @@ if(location.protocol==='file:'){
 });
 
 railState();
-setView('upload');
+autoStart();   // hosted: auto-load + process → land on Rankings; local file:// → Upload tab
 </script>
 </body>
 </html>
