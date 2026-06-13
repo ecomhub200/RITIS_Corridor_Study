@@ -264,6 +264,10 @@
   .btn-sm:hover{border-color:var(--blue);color:var(--blue)}
   /* filterable multi-select dropdown */
   .ms{position:relative;margin:4px 0 14px;max-width:600px}
+  .ms-field{position:relative}
+  /* let panels that host a dropdown overflow so the list isn't clipped */
+  .panel.ovis{overflow:visible}
+  .panel:has(.ms){overflow:visible}
   .ms-trigger{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:9px 13px;border:1.5px solid var(--line);border-radius:9px;background:#fff;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;text-align:left}
   .ms-trigger:hover{border-color:var(--blue)}
   .ms.open .ms-trigger{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}
@@ -648,7 +652,7 @@
   </div>
 
   <!-- Explore selector (drives all explore charts) -->
-  <div class="panel reveal" data-view="explore" id="explorePanel">
+  <div class="panel reveal ovis" data-view="explore" id="explorePanel">
     <div class="panel-head">
       <div class="panel-ico orange">🔍</div>
       <div><h2>Choose corridors to explore</h2><p>Filter and pick one or more corridors — the hourly travel-time, speed, and comparison below update to match.</p></div>
@@ -720,7 +724,7 @@
   </div>
 
   <!-- Report builder -->
-  <div class="panel reveal noprint" data-view="reports">
+  <div class="panel reveal noprint ovis" data-view="reports">
     <div class="panel-head">
       <div class="panel-ico green">📑</div>
       <div><h2>Report Builder</h2><p>Generate a professional PDF report (with companion CSV) — single corridor, a selection, or the entire jurisdiction.</p></div>
@@ -1669,11 +1673,12 @@ function buildMultiSelect(id){
   const shown=sys.filter(s=>!q||('#'+s.rank+' '+s.name).toLowerCase().includes(q));
 
   box.innerHTML='';
+  const field=document.createElement('div'); field.className='ms-field';
   const trig=document.createElement('button');
   trig.type='button'; trig.className='ms-trigger'+(sel.size?' has':'');
   trig.innerHTML=`<span class="ms-cap">${sel.size?sel.size+' corridor'+(sel.size>1?'s':'')+' selected':'Select corridors…'}</span><span class="ms-car">▾</span>`;
   trig.onclick=e=>{ e.stopPropagation(); box.classList.toggle('open'); const s=box.querySelector('.ms-search'); if(box.classList.contains('open')&&s)s.focus(); };
-  box.appendChild(trig);
+  field.appendChild(trig);
 
   const panel=document.createElement('div'); panel.className='ms-panel'; panel.onclick=e=>e.stopPropagation();
   const search=document.createElement('input');
@@ -1699,7 +1704,8 @@ function buildMultiSelect(id){
   panel.appendChild(list);
   const foot=document.createElement('div'); foot.className='ms-foot'; foot.textContent=sel.size+' of '+sys.length+' selected';
   panel.appendChild(foot);
-  box.appendChild(panel);
+  field.appendChild(panel);
+  box.appendChild(field);
 
   const chips=document.createElement('div'); chips.className='ms-chips';
   [...sel].forEach(n=>{
