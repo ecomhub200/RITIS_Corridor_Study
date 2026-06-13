@@ -36,7 +36,7 @@ import urllib.error
 import urllib.request
 
 BASE = 'https://pda-api.ritis.org/v2'
-KEY = os.environ['RITIS_KEY']
+KEY = os.environ['RITIS_KEY'].strip()   # .strip(): a pasted trailing newline causes 401s
 DAYS = int(os.environ.get('WINDOW_DAYS', '91'))
 GRAN = int(os.environ.get('GRANULARITY_MIN', '15'))
 UNITS = os.environ.get('TT_UNITS', 'seconds')
@@ -76,10 +76,23 @@ BODY = {
 }
 
 
-def call(url, data=None):
-    req = urllib.request.Request(url, data=data, method='POST' if data else 'GET')
+# How the key is presented is discovered on the first submit (the RITIS docs are
+# not reachable from every environment): 'query' = ?key=, 'header' =
+# Authorization: <key>, 'bearer' = Authorization: Bearer <key>. The working mode is
+# remembered and reused for the status/results calls.
+AUTH = {'mode': 'query'}
+
+
+def call(url, data=None, auth=None):
+    mode = auth or AUTH['mode']
+    full = url + (('&' if '?' in url else '?') + 'key=' + KEY) if mode == 'query' else url
+    req = urllib.request.Request(full, data=data, method='POST' if data else 'GET')
     if data:
         req.add_header('Content-Type', 'application/json')
+    if mode == 'header':
+        req.add_header('Authorization', KEY)
+    elif mode == 'bearer':
+        req.add_header('Authorization', f'Bearer {KEY}')
     try:
         with urllib.request.urlopen(req, timeout=900) as r:
             return r.status, r.read()
@@ -88,29 +101,52 @@ def call(url, data=None):
 
 
 print(f'Submitting export: {start} -> {end_excl} (exclusive), {GRAN}-min, {UNITS}')
-code, raw = call(f'{BASE}/submit/export?key={KEY}', json.dumps(BODY).encode())
-try:
-    resp = json.loads(raw or b'{}')
-except json.JSONDecodeError:
-    body = (raw or b'')[:1000].decode('utf-8', 'replace')
-    sys.exit(f'Submit returned a non-JSON response (HTTP {code}). First 1000 bytes:\n'
-             f'{body}\n---\n'
-             'A non-JSON body usually means an auth or endpoint problem (an HTML / '
-             'plain-text error page), not a body-schema mismatch. Verify the '
-             '/submit/export URL, how the key is passed, and the BODY field names '
-             'against https://pda-api.ritis.org/v2/docs.')
-if code != 200 or 'id' not in resp:
-    sys.exit(f'Submit failed (HTTP {code}): {(raw or b"")[:600]}\n'
-             'If this is a schema error, compare BODY against '
-             'https://pda-api.ritis.org/v2/docs and fix the field names above.')
+body_bytes = json.dumps(BODY).encode()
+resp = None
+last_code, last_raw = None, b''
+for mode in ('query', 'header', 'bearer'):
+    code, raw = call(f'{BASE}/submit/export', body_bytes, auth=mode)
+    last_code, last_raw = code, raw
+    try:
+        parsed = json.loads(raw or b'{}')
+    except json.JSONDecodeError:
+        parsed = None
+    ok = code == 200 and isinstance(parsed, dict) and 'id' in parsed
+    print(f'submit attempt [{mode}]: HTTP {code}{" — accepted" if ok else ""}')
+    if ok:
+        AUTH['mode'] = mode
+        resp = parsed
+        break
+
+if resp is None:
+    body = (last_raw or b'')[:600].decode('utf-8', 'replace')
+    # A JSON error body usually means auth worked but the request body did not:
+    try:
+        json.loads(last_raw or b'{}')
+        is_json = True
+    except json.JSONDecodeError:
+        is_json = False
+    if is_json and last_code not in (401, 403):
+        sys.exit(f'Submit failed (HTTP {last_code}): {body}\n---\n'
+                 'The response is JSON, so auth worked but the request was rejected. '
+                 'If this is a schema error, compare the BODY dict against '
+                 'https://pda-api.ritis.org/v2/docs and fix the field names.')
+    sys.exit(f'Submit was rejected by every auth method (last HTTP {last_code}). '
+             f'Body:\n{body}\n---\n'
+             'A 401/403 from all of ?key=, "Authorization: <key>", and '
+             '"Authorization: Bearer <key>" means the key value itself is being '
+             'rejected — it is most likely invalid/expired, was pasted with extra '
+             'characters, or the RITIS account lacks Massive Data Downloader API '
+             'access. Regenerate the API key in your RITIS account, confirm export/API '
+             'access, then update the RITIS_KEY repository secret and re-run.')
 job = resp['id']
-print('Job id:', job)
+print(f'Authenticated via {AUTH["mode"]}. Job id:', job)
 
 # ---- 3. Poll politely (workflow: status by jobId, results by ORIGINAL UUID) --
 waits = [10, 20, 30] + [45] * 70          # ~55 min ceiling, gentle on 100 req/hr
 for i, w in enumerate(waits):
     time.sleep(w)
-    code, raw = call(f'{BASE}/jobs/status?jobId={job}&key={KEY}')
+    code, raw = call(f'{BASE}/jobs/status?jobId={job}')
     st = json.loads(raw or b'{}')
     print(f'poll {i + 1}: {st.get("state")} {st.get("progress")}%')
     if st.get('state') == 'SUCCEEDED' and st.get('progress') == 100:
@@ -122,7 +158,7 @@ else:
              '30 days; rerun the workflow.')
 
 print('Downloading result ZIP (uses the original UUID, not the job id)...')
-code, raw = call(f'{BASE}/results/export?uuid={BODY["UUID"]}&key={KEY}')
+code, raw = call(f'{BASE}/results/export?uuid={BODY["UUID"]}')
 if code != 200:
     sys.exit(f'Result download failed (HTTP {code})')
 
