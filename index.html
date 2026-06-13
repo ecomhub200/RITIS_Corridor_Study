@@ -594,7 +594,44 @@
     <div class="panel-body" id="diagBody"></div>
   </div>
 
-  <!-- OCRA table -->
+  <!-- Charts -->
+  <div class="panel chart-panel reveal" data-view="rankings">
+    <div class="panel-head">
+      <div class="panel-ico orange">📈</div>
+      <div><h2>Combined Score by Corridor</h2><p>Sorted by combined score (gold = #1 priority); same scale as the OCRA sheet.</p></div>
+    </div>
+    <div class="panel-body"><div class="chart-box tall"><canvas id="scoreChart"></canvas></div></div>
+  </div>
+
+  <div class="panel chart-panel reveal" data-view="rankings">
+    <div class="panel-head">
+      <div class="panel-ico blue">⏱️</div>
+      <div><h2>Average Delay per Intersection</h2><p>Seconds per signal in the AM / Mid-day / PM windows.</p></div>
+    </div>
+    <div class="panel-body"><div class="chart-box"><canvas id="delayChart"></canvas></div></div>
+  </div>
+
+  <!-- Explore selector (drives all explore charts) -->
+  <div class="panel chart-panel reveal ovis" data-view="explore">
+    <div class="panel-head">
+      <div class="panel-ico green">🔍</div>
+      <div><h2>Hourly Travel Time by Direction</h2><p>Pick one or more corridors. With a single corridor you also get each direction's free-flow reference (dashed).</p></div>
+    </div>
+    <div class="panel-body">
+      <div class="ms" id="drillPick"></div>
+      <div class="chart-box"><canvas id="drillChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="panel chart-panel reveal" data-view="rankings">
+    <div class="panel-head">
+      <div class="panel-ico orange">🎯</div>
+      <div><h2>Delay vs. Reliability</h2><p>Each dot is one corridor. Farther right = more delay per signal. Higher up = bigger day-to-day swings. Corridors in the upper-right quadrant are the strongest retiming candidates.</p></div>
+    </div>
+    <div class="panel-body"><div class="chart-box"><canvas id="scatterChart"></canvas></div></div>
+  </div>
+
+  <!-- OCRA table (below the charts) -->
   <div class="panel reveal" data-view="rankings">
     <div class="panel-head">
       <div class="panel-ico blue">🗂️</div>
@@ -634,58 +671,6 @@
     </div>
   </div>
 
-  <!-- Charts -->
-  <div class="panel chart-panel reveal" data-view="rankings">
-    <div class="panel-head">
-      <div class="panel-ico orange">📈</div>
-      <div><h2>Combined Score by Corridor</h2><p>Sorted by combined score (gold = #1 priority); same scale as the OCRA sheet.</p></div>
-    </div>
-    <div class="panel-body"><div class="chart-box tall"><canvas id="scoreChart"></canvas></div></div>
-  </div>
-
-  <div class="panel chart-panel reveal" data-view="rankings">
-    <div class="panel-head">
-      <div class="panel-ico blue">⏱️</div>
-      <div><h2>Average Delay per Intersection</h2><p>Seconds per signal in the AM / Mid-day / PM windows.</p></div>
-    </div>
-    <div class="panel-body"><div class="chart-box"><canvas id="delayChart"></canvas></div></div>
-  </div>
-
-  <!-- Explore selector (drives all explore charts) -->
-  <div class="panel reveal ovis" data-view="explore" id="explorePanel">
-    <div class="panel-head">
-      <div class="panel-ico orange">🔍</div>
-      <div><h2>Choose corridors to explore</h2><p>Filter and pick one or more corridors — the hourly travel-time, speed, and comparison below update to match.</p></div>
-    </div>
-    <div class="panel-body">
-      <div class="ms" id="cmpPick"></div>
-      <div class="pick-actions" style="margin-top:2px">
-        <button class="btn-recalc" onclick="runCompare()">⚖ Compare selected</button>
-        <button class="tool-btn accent" onclick="generateComparePDF()"><span class="ti">📑</span> Comparison report (PDF)</button>
-        <button class="tool-btn" onclick="downloadCompareCSV()"><span class="ti">📥</span> Comparison data (CSV)</button>
-      </div>
-    </div>
-  </div>
-
-  <div class="panel chart-panel reveal" data-view="explore">
-    <div class="panel-head">
-      <div class="panel-ico green">🔍</div>
-      <div><h2>Hourly Travel Time by Direction</h2><p>Dashed lines mark the free-flow reference; the gap is delay.</p></div>
-    </div>
-    <div class="panel-body">
-      <select class="corr-select" id="corrSelect" onchange="drawDrilldown()"></select>
-      <div class="chart-box"><canvas id="drillChart"></canvas></div>
-    </div>
-  </div>
-
-  <div class="panel chart-panel reveal" data-view="rankings">
-    <div class="panel-head">
-      <div class="panel-ico orange">🎯</div>
-      <div><h2>Delay vs. Reliability</h2><p>Each dot is one corridor. Farther right = more delay per signal. Higher up = bigger day-to-day swings. Corridors in the upper-right quadrant are the strongest retiming candidates.</p></div>
-    </div>
-    <div class="panel-body"><div class="chart-box"><canvas id="scatterChart"></canvas></div></div>
-  </div>
-
   <!-- Speed analysis -->
   <div class="panel reveal" data-view="explore">
     <div class="panel-head">
@@ -712,14 +697,20 @@
     </div>
   </div>
 
-  <!-- Comparison output (selection lives in the Explore selector above) -->
-  <div class="panel reveal noprint" data-view="explore">
+  <!-- Side-by-side comparison (own corridor selector) -->
+  <div class="panel reveal noprint ovis" data-view="explore">
     <div class="panel-head">
       <div class="panel-ico orange">⚖️</div>
-      <div><h2>Side-by-Side Comparison</h2><p>Metrics and charts for the corridors selected above.</p></div>
+      <div><h2>Side-by-Side Comparison</h2><p>Pick corridors and press Compare for metrics + charts side by side.</p></div>
     </div>
     <div class="panel-body">
-      <div id="cmpOut"><p class="ms-empty" style="text-align:left;padding:6px 2px">Select corridors above, then press <b>“Compare selected”</b>.</p></div>
+      <div class="ms" id="cmpPick"></div>
+      <div class="pick-actions" style="margin-top:2px;margin-bottom:10px">
+        <button class="btn-recalc" onclick="runCompare()">⚖ Compare selected</button>
+        <button class="tool-btn accent" onclick="generateComparePDF()"><span class="ti">📑</span> Comparison report (PDF)</button>
+        <button class="tool-btn" onclick="downloadCompareCSV()"><span class="ti">📥</span> Comparison data (CSV)</button>
+      </div>
+      <div id="cmpOut"><p class="ms-empty" style="text-align:left;padding:6px 2px">Pick corridors above, then press <b>“Compare selected”</b>.</p></div>
     </div>
   </div>
 
@@ -805,7 +796,7 @@ function setView(name){
   if(t)t.textContent=m[0]; if(s)s.textContent=m[1];
   document.body.classList.remove('sb-open');
   window.scrollTo(0,0);
-  if(name==='explore'){ buildPicker('cmpPick'); syncExplore(); }
+  if(name==='explore'){ buildPicker('cmpPick'); buildPicker('drillPick'); drawDrilldown(); }
   if(name==='reports'){ buildPicker('rptPick'); updateRptScope(); }
 }
 // reflect data-loaded state in the sidebar + topbar status
@@ -1257,8 +1248,8 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
   renderDiagnostics();
   renderSpeedTable();
   renderSpeedChart();
-  buildPicker('cmpPick');buildPicker('rptPick');
-  buildDrillSelect();
+  if(!state.msSel['drillPick']||!state.msSel['drillPick'].size){const f0=state.systems.find(s=>s.hasData);state.msSel['drillPick']=new Set(f0?[f0.name]:[]);}
+  buildPicker('cmpPick');buildPicker('rptPick');buildPicker('drillPick');
   drawDrilldown();
   updateRptScope();
   railState();                       // unlock the sidebar's result views
@@ -1303,8 +1294,8 @@ function recalcScores(){
   renderOCRA();
   renderKPITop();
   drawScoreChart();drawDelayChart();drawScatter();
-  buildDrillSelect();
-  if(document.getElementById('cmpPick').children.length){buildPicker('cmpPick');buildPicker('rptPick');}
+  const cp=document.getElementById('cmpPick');
+  if(cp&&cp.children.length){buildPicker('cmpPick');buildPicker('rptPick');buildPicker('drillPick');drawDrilldown();}
 }
 function renderKPITop(){
   const first=document.querySelector('#kpiRow .kpi');
@@ -1416,22 +1407,39 @@ function buildDrillSelect(){
   if(cur&&state.systems.some(s=>s.name===cur))sel.value=cur;
 }
 function drawDrilldown(){
-  const name=document.getElementById('corrSelect').value;
-  const sys=state.systems.find(s=>s.name===name);if(!sys)return;
-  const ctx=document.getElementById('drillChart');
+  const ctx=document.getElementById('drillChart');if(!ctx)return;
   if(drillChart)drillChart.destroy();
+  const names=pickedNames('drillPick');
+  let sels=state.systems?state.systems.filter(s=>s.hasData&&names.includes(s.name)):[];
+  if(!sels.length){ const f=state.systems&&state.systems.find(s=>s.hasData); if(f)sels=[f]; }
+  if(!sels.length)return;
   const hours=Array.from({length:24},(_,h)=>(h%12===0?12:h%12)+(h<12?' AM':' PM'));
-  const colors=[BLUE,ORANGE,'#1d8a4e','#8e44ad'];
+  const colors=[BLUE,ORANGE,'#1d8a4e','#8e44ad','#d23b2f','#0e7490','#b8860b','#5b21b6'];
+  const short=n=>n.length>30?n.slice(0,29)+'…':n;
   const datasets=[];
-  sys.dirs.forEach((d,i)=>{
-    datasets.push({label:(d.bearing||('Dir '+(i+1)))+' — avg travel time',data:d.hourly,
-      borderColor:colors[i%4],backgroundColor:colors[i%4],tension:.35,spanGaps:true,pointRadius:2,borderWidth:2.5});
-    if(isFinite(d.refTT))datasets.push({label:(d.bearing||('Dir '+(i+1)))+' — free-flow ref',
-      data:Array(24).fill(d.refTT),borderColor:colors[i%4],borderDash:[7,5],pointRadius:0,borderWidth:1.5});
-  });
+  if(sels.length===1){
+    // one corridor → rich per-direction view with dashed free-flow references
+    sels[0].dirs.forEach((d,i)=>{
+      datasets.push({label:(d.bearing||('Dir '+(i+1)))+' — avg travel time',data:d.hourly,
+        borderColor:colors[i%colors.length],backgroundColor:colors[i%colors.length],tension:.35,spanGaps:true,pointRadius:2,borderWidth:2.5});
+      if(isFinite(d.refTT))datasets.push({label:(d.bearing||('Dir '+(i+1)))+' — free-flow ref',
+        data:Array(24).fill(d.refTT),borderColor:colors[i%colors.length],borderDash:[7,5],pointRadius:0,borderWidth:1.5});
+    });
+  }else{
+    // multiple corridors → one line each (hourly travel time averaged across directions)
+    sels.forEach((s,i)=>{
+      const c=colors[i%colors.length];
+      const hourly=Array.from({length:24},(_,h)=>{
+        const v=s.dirs.map(d=>d.hourly[h]).filter(x=>x!=null&&isFinite(x));
+        return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;
+      });
+      datasets.push({label:'#'+s.rank+' '+short(s.name),data:hourly,
+        borderColor:c,backgroundColor:c,tension:.35,spanGaps:true,pointRadius:2,borderWidth:2.5});
+    });
+  }
   drillChart=new Chart(ctx,{type:'line',data:{labels:hours,datasets},
     options:{responsive:true,maintainAspectRatio:false,
-      plugins:{tooltip:{mode:'index',intersect:false}},
+      plugins:{tooltip:{mode:'index',intersect:false},legend:{display:true,labels:{boxWidth:18,font:{size:11}}}},
       scales:{y:{title:{display:true,text:'Corridor travel time (min)'}}}}});
 }
 
@@ -1461,16 +1469,10 @@ const quadrantPlugin={
     cap('INCONSISTENT DAY TO DAY',ca.left+8,ca.top+16,'left','#8a94ab');
     cap('CONSISTENTLY SLOW',ca.right-8,ca.bottom-10,'right','#8a94ab');
     cap('PERFORMING WELL',ca.left+8,ca.bottom-10,'left','#8a94ab');
-    // point name labels (skip when crowded)
-    if(pts.length<=24){
-      ctx.font='600 10px Segoe UI,sans-serif';ctx.textAlign='left';
-      meta.data.forEach((el,i)=>{
-        const nm=pts[i].name.length>22?pts[i].name.slice(0,21)+'…':pts[i].name;
-        ctx.fillStyle='#44506b';
-        const lx=Math.min(el.x+9,ca.right-ctx.measureText(nm).width-4);
-        ctx.fillText(nm,lx,el.y-9);
-      });
-    }
+    // rank number centered in each dot — every corridor is identifiable; full name on hover
+    ctx.font='700 9px Segoe UI,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+    meta.data.forEach((el,i)=>{ ctx.fillStyle='#fff'; ctx.fillText(String(pts[i].rank),el.x,el.y); });
+    ctx.textBaseline='alphabetic';
     ctx.restore();
   }
 };
@@ -1478,11 +1480,12 @@ function drawScatter(){
   const ctx=document.getElementById('scatterChart');
   if(scatterChart)scatterChart.destroy();
   const S=state.systems.filter(s=>s.hasData);
+  const mx=median(S.map(s=>s.normDelay)), my=median(S.map(s=>s.normIQR));
   scatterChart=new Chart(ctx,{type:'scatter',data:{datasets:[{
     label:'Corridors',
     data:S.map(s=>({x:s.normDelay,y:s.normIQR,name:s.name,rank:s.rank})),
-    backgroundColor:S.map(s=>s.rank<=3?ORANGE:BLUE),
-    pointRadius:7,pointHoverRadius:10,pointBorderColor:'#fff',pointBorderWidth:1.5}]},
+    backgroundColor:S.map(s=>(s.normDelay>mx&&s.normIQR>my)?ORANGE:BLUE),
+    pointRadius:9,pointHoverRadius:12,pointBorderColor:'#fff',pointBorderWidth:1.5}]},
     options:{responsive:true,maintainAspectRatio:false,
       plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>{
         const p=c.raw;return `#${p.rank} ${p.name}: delay ${p.x.toFixed(2)} sec/int, day-to-day swing (IQR) ${p.y.toFixed(4)} min/int`;}}}},
@@ -1656,7 +1659,10 @@ function downloadCorrSpeeds(){
    ============================================================ */
 /* ---------- filterable multi-select dropdown (Explore + Report) ---------- */
 state.msSel=state.msSel||{};
-const MS_ONCHANGE={cmpPick:syncExplore};        // selection drives the Explore view
+const MS_ONCHANGE={                              // selection live-drives the Explore charts
+  drillPick:()=>drawDrilldown(),
+  cmpPick:()=>{ const out=document.getElementById('cmpOut'); if(out&&out.querySelector('table'))runCompare(); }
+};
 
 function buildPicker(id){ buildMultiSelect(id); }   // back-compat render entry
 
