@@ -326,8 +326,22 @@
   .map-legend .lg-key{display:inline-flex;align-items:center;gap:5px;margin-right:6px}
   .map-legend .lg-sw{width:16px;height:10px;border-radius:2px;display:inline-block}
   #corridorMap{height:580px;border-radius:12px;border:1px solid var(--line);overflow:hidden;z-index:1}
+  #corridorMap:fullscreen{height:100vh;border-radius:0}
+  .map-sel{margin-left:6px;padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-size:12.5px;font-weight:600;background:#fff;font-family:inherit;color:var(--ink)}
+  .map-badge{background:#102a66;color:#fff;border:2px solid #fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font:700 10px 'Segoe UI',sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.45)}
   .leaflet-popup-content{font-family:'Segoe UI',system-ui,sans-serif;font-size:12.5px}
   .leaflet-popup-content b{color:var(--blue)}
+  /* collapsible sidebar (desktop) */
+  .sb-collapse-btn{display:inline-flex;border:none;background:none;font-size:15px;cursor:pointer;color:var(--muted);padding:5px 9px;border-radius:8px;line-height:1}
+  .sb-collapse-btn:hover{background:var(--blue-soft);color:var(--blue)}
+  body.sb-collapsed{grid-template-columns:62px 1fr}
+  body.sb-collapsed .sb-brand{justify-content:center;padding:16px 8px;gap:0}
+  body.sb-collapsed .sb-brand .bt{display:none}
+  body.sb-collapsed .sb-sec,body.sb-collapsed .sb-foot{display:none}
+  body.sb-collapsed .sb-item{font-size:0;justify-content:center;gap:0;padding:11px 0}
+  body.sb-collapsed .sb-item .sb-ico{font-size:18px}
+  body.sb-collapsed .sb-collapse-btn{transform:scaleX(-1)}
+  @media(max-width:900px){.sb-collapse-btn{display:none}}
   /* collapsible diagnostics details */
   .diag-details{border:1px solid var(--line);border-radius:10px;margin-top:10px;background:#fafcff;overflow:hidden}
   .diag-details>summary{list-style:none;cursor:pointer;padding:10px 14px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
@@ -426,6 +440,7 @@
 <!-- ================= TOPBAR ================= -->
 <header class="topbar">
   <button class="sb-burger" onclick="document.body.classList.toggle('sb-open')" aria-label="Menu">☰</button>
+  <button class="sb-collapse-btn" onclick="toggleSidebar()" aria-label="Collapse sidebar" title="Collapse / expand sidebar">⮜</button>
   <h2 id="tbTitle">Upload Data</h2>
   <span class="tb-sub" id="tbSub">Load your corridor + probe data</span>
   <span class="tb-status off" id="tbStatus">No data loaded</span>
@@ -634,15 +649,35 @@
     <div class="panel-body">
       <div class="map-controls noprint">
         <label class="map-cby">Color by
-          <select id="mapMetric" class="corr-select" onchange="renderMap()" style="margin:0 0 0 8px;min-width:200px">
+          <select id="mapMetric" class="map-sel" onchange="renderMap()">
             <option value="rank">Priority rank (OCRA)</option>
             <option value="delay">Delay per signal (sec)</option>
             <option value="speed">85th-percentile speed (mph)</option>
             <option value="iqr">Reliability — day-to-day swing (IQR)</option>
           </select>
         </label>
-        <div id="mapLegend" class="map-legend"></div>
+        <label class="map-cby">Show
+          <select id="mapTopN" class="map-sel" onchange="renderMap()">
+            <option value="0">All corridors</option>
+            <option value="10">Top 10</option>
+            <option value="5">Top 5</option>
+            <option value="3">Top 3</option>
+          </select>
+        </label>
+        <label class="map-cby">Basemap
+          <select id="mapBase" class="map-sel" onchange="setBasemap(this.value)">
+            <option value="street">Street</option>
+            <option value="light">Clean grey</option>
+            <option value="sat">Satellite</option>
+          </select>
+        </label>
+        <label class="map-cby">Find
+          <select id="mapJump" class="map-sel" onchange="jumpToCorridor(this.value)"><option value="">— corridor —</option></select>
+        </label>
+        <button class="btn-sm" onclick="mapFit()">Fit all</button>
+        <button class="btn-sm" onclick="mapFullscreen()">⛶ Fullscreen</button>
       </div>
+      <div id="mapLegend" class="map-legend" style="margin-bottom:10px"></div>
       <div id="corridorMap"></div>
       <div id="mapNote" class="note-box noprint" style="display:none"></div>
     </div>
@@ -884,6 +919,11 @@ function railState(){
 // close any open multi-select when clicking outside / pressing Esc
 document.addEventListener('click',e=>{ document.querySelectorAll('.ms.open').forEach(m=>{ if(!m.contains(e.target))m.classList.remove('open'); }); });
 document.addEventListener('keydown',e=>{ if(e.key==='Escape')document.querySelectorAll('.ms.open').forEach(m=>m.classList.remove('open')); });
+function toggleSidebar(){
+  const c=document.body.classList.toggle('sb-collapsed');
+  try{localStorage.setItem('sb_collapsed',c?'1':'0');}catch(e){}
+  setTimeout(()=>{ if(state.map&&document.querySelector('[data-view~="map"]:not(.hidden)'))state.map.invalidateSize(); },220);
+}
 
 /* ---------- hour selects & day pills ---------- */
 function hourOptions(sel,def){
@@ -1599,62 +1639,140 @@ function mapMetricVal(s,metric){
   }
   return null;
 }
-const MAP_RAMP=['#1d3f94','#3f7fb0','#7fb08a','#e8a13e','#c0392b']; // cool → hot (hot = retime first)
+const MAP_RAMP=['#fed976','#feb24c','#fd8d3c','#fc4e2a','#bd0026'];  // colorblind-safe YlOrRd (low → dark red = retime first)
+const MAP_BASES={
+  street:{url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',opt:{maxZoom:19,attribution:'&copy; OpenStreetMap'}},
+  light:{url:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',opt:{maxZoom:20,subdomains:'abcd',attribution:'&copy; OpenStreetMap &copy; CARTO'}},
+  sat:{url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',opt:{maxZoom:19,attribution:'Tiles &copy; Esri'}}
+};
+function parseSegGeo(j){
+  const out={},feats=(j&&j.features)||[];
+  feats.forEach(f=>{
+    const p=f.properties||{},xd=String(p.xd||p.XD||p.xd_id||p.XDSegID||p.SegID||p.segid||'').trim();
+    if(!xd||!f.geometry)return;
+    let coords=null;
+    if(f.geometry.type==='LineString')coords=f.geometry.coordinates;
+    else if(f.geometry.type==='MultiLineString')coords=[].concat.apply([],f.geometry.coordinates);
+    if(coords&&coords.length>1)out[xd]=coords.map(c=>[c[1],c[0]]);   // [lon,lat] → [lat,lon]
+  });
+  return out;
+}
+function segLatLngs(xd,g){const ln=state.segLine&&state.segLine[xd];return(ln&&ln.length>1)?ln:[[g[0],g[1]],[g[2],g[3]]];}
+function setBasemap(which){
+  if(!state.map)return;
+  if(state.baseLayer)state.map.removeLayer(state.baseLayer);
+  const b=MAP_BASES[which]||MAP_BASES.street;
+  state.baseLayer=L.tileLayer(b.url,b.opt).addTo(state.map);
+  if(state.baseLayer.bringToBack)state.baseLayer.bringToBack();
+}
+function mapFit(){if(state.map&&state.mapBounds&&state.mapBounds.length)state.map.fitBounds(state.mapBounds,{padding:[28,28]});}
+function mapFullscreen(){
+  const el=document.getElementById('corridorMap');if(!el)return;
+  if(document.fullscreenElement)document.exitFullscreen();
+  else if(el.requestFullscreen)el.requestFullscreen();
+  setTimeout(()=>{if(state.map)state.map.invalidateSize();},250);
+}
+function jumpToCorridor(name){
+  if(!name||!state.map)return;
+  const b=state.corridorBounds&&state.corridorBounds[name];
+  if(b&&b.length)state.map.fitBounds(b,{padding:[45,45]});
+  const m=state.corridorMain&&state.corridorMain[name];
+  if(m&&m.openPopup)setTimeout(()=>m.openPopup(),350);
+}
+function mapToExplore(name){
+  state.msSel['drillPick']=new Set([name]);
+  if(!state.msSel['cmpPick'])state.msSel['cmpPick']=new Set();
+  state.msSel['cmpPick'].add(name);
+  setView('explore');
+}
+function buildMapJump(systems){
+  const sel=document.getElementById('mapJump');if(!sel)return;
+  const cur=sel.value;
+  sel.innerHTML='<option value="">— corridor —</option>'+
+    systems.slice().sort((a,b)=>a.rank-b.rank).map(s=>`<option value="${esc(s.name)}">#${s.rank} ${esc(s.name)}</option>`).join('');
+  if([...sel.options].some(o=>o.value===cur))sel.value=cur;
+}
+function buildMapLegend(metric,drawList){
+  const legend=document.getElementById('mapLegend');if(!legend)return;
+  const unit=metric==='delay'?' sec':metric==='speed'?' mph':'';
+  const dp=metric==='iqr'?2:metric==='rank'?0:1;
+  const title=metric==='rank'?'Priority (rank)':metric==='delay'?'Delay / signal':metric==='speed'?'85th-pct speed':'Reliability (IQR)';
+  const cls=[[],[],[],[],[]];
+  drawList.forEach(({o,cl})=>cls[cl].push(o.v));
+  let html='<span style="margin-right:6px;color:var(--muted);font-weight:800">'+title+'</span>';
+  for(let c=4;c>=0;c--){
+    const vs=cls[c];if(!vs.length)continue;
+    const mn=Math.min(...vs),mx=Math.max(...vs);
+    const rng=metric==='rank'?(mn===mx?'#'+mn:'#'+mn+'–#'+mx):(mn.toFixed(dp)+(mn===mx?'':'–'+mx.toFixed(dp))+unit);
+    html+=`<span class="lg-key"><span class="lg-sw" style="background:${MAP_RAMP[c]}"></span>${rng} <span style="color:var(--muted)">(${vs.length})</span></span>`;
+  }
+  html+='<span style="color:var(--muted);margin-left:2px">— dark red = retime first</span>';
+  legend.innerHTML=html;
+}
 function renderMap(){
   const host=document.getElementById('corridorMap'),note=document.getElementById('mapNote');
   if(!host)return;
   if(typeof L==='undefined'||!window.L){
-    if(note){note.style.display='block';note.innerHTML='<b>Map library couldn’t load.</b> The map needs an internet connection (Leaflet + OpenStreetMap tiles). Every other tab works offline.';}
+    if(note){note.style.display='block';note.innerHTML='<b>Map library couldn’t load.</b> The map needs an internet connection (Leaflet + map tiles). Every other tab works offline.';}
     return;
   }
   if(note)note.style.display='none';
   if(!state.systems)return;
   const metric=(document.getElementById('mapMetric')||{}).value||'rank';
+  const topN=+((document.getElementById('mapTopN')||{}).value||0);
   if(!state.map){
     state.map=L.map('corridorMap',{scrollWheelZoom:true}).setView([37.55,-77.45],11);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,
-      attribution:'&copy; OpenStreetMap contributors'}).addTo(state.map);
     state.mapLayer=L.layerGroup().addTo(state.map);
+    state.labelLayer=L.layerGroup().addTo(state.map);
+    setBasemap((document.getElementById('mapBase')||{}).value||'street');
   }
-  state.mapLayer.clearLayers();
-  const sys=state.systems.filter(s=>s.hasData);
+  state.mapLayer.clearLayers();state.labelLayer.clearLayers();
+  let sys=state.systems.filter(s=>s.hasData);
+  if(topN>0)sys=sys.slice().sort((a,b)=>a.rank-b.rank).slice(0,topN);
   const vals=sys.map(s=>({s,v:mapMetricVal(s,metric)})).filter(o=>o.v!=null);
-  const hot=o=>(metric==='rank'||metric==='speed')?-o.v:o.v;     // hot = worse/priority
+  const hot=o=>(metric==='rank'||metric==='speed')?-o.v:o.v;
   const hs=vals.map(hot).sort((a,b)=>a-b);
   const qBreak=q=>hs.length?hs[Math.min(hs.length-1,Math.floor(q*(hs.length-1)))]:0;
   const breaks=[qBreak(.2),qBreak(.4),qBreak(.6),qBreak(.8)];
-  const colorFor=o=>{let c=0,hv=hot(o);for(const b of breaks)if(hv>b)c++;return MAP_RAMP[c];};
+  const classOf=o=>{let c=0,hv=hot(o);for(const b of breaks)if(hv>b)c++;return c;};
   const fmt=(v,d=1)=>isFinite(v)?v.toFixed(d):'—';
-  const bounds=[];
-  vals.forEach(o=>{
-    const s=o.s,color=colorFor(o),grp=[];
+  const allBounds=[];state.corridorBounds={};state.corridorMain={};
+  const drawList=vals.map(o=>({o,cl:classOf(o)})).sort((a,b)=>a.cl-b.cl);   // low priority first → high drawn on top
+  drawList.forEach(({o,cl})=>{
+    const s=o.s,color=MAP_RAMP[cl],weight=4+cl,layers=[],lines=[],cbounds=[];
     s.dirs.forEach(r=>{
       const corr=state.corridors&&state.corridors.find(c=>c.idx===r.idx);if(!corr)return;
       corr.segs.forEach(xd=>{
         const g=state.segGeo&&state.segGeo[xd];if(!g)return;
-        const line=L.polyline([[g[0],g[1]],[g[2],g[3]]],{color,weight:5,opacity:.9});
-        line.on('mouseover',()=>line.setStyle({weight:8,opacity:1}));
-        line.on('mouseout',()=>line.setStyle({weight:5,opacity:.9}));
-        grp.push(line);bounds.push([g[0],g[1]],[g[2],g[3]]);
+        const pts=segLatLngs(xd,g);
+        layers.push(L.polyline(pts,{color:'#ffffff',weight:weight+3,opacity:.8}));  // casing
+        const main=L.polyline(pts,{color,weight,opacity:.95});
+        layers.push(main);lines.push(main);
+        pts.forEach(pp=>{allBounds.push(pp);cbounds.push(pp);});
       });
     });
-    if(!grp.length)return;
+    if(!layers.length)return;
     const sp=mapMetricVal(s,'speed');
-    const popup=`<b>#${s.rank} ${esc(s.name)}</b><br>Combined score: ${fmt(s.score,2)}<br>`+
-      `Delay/int: ${fmt(s.normDelay,1)} sec &middot; IQR: ${fmt(s.normIQR,3)} min<br>`+
-      `85th-pct speed: ${fmt(sp,1)} mph &middot; Signals: ${s.nSignals}`;
-    grp.forEach(l=>l.bindPopup(popup));
-    L.layerGroup(grp).addTo(state.mapLayer);
+    const popup=`<b>#${s.rank} ${esc(s.name)}</b><br>Combined score: ${fmt(s.score,2)}<br>Delay/int: ${fmt(s.normDelay,1)} sec &middot; IQR: ${fmt(s.normIQR,3)} min<br>85th-pct speed: ${fmt(sp,1)} mph &middot; Signals: ${s.nSignals}<br><button class="to-explore" style="margin-top:7px;border:none;background:#1d3f94;color:#fff;font-weight:700;border-radius:6px;padding:5px 11px;cursor:pointer">View in Explore →</button>`;
+    lines.forEach(l=>{
+      l.bindPopup(popup);
+      l.bindTooltip('#'+s.rank+' '+esc(s.name),{sticky:true,direction:'top'});
+      l.on('mouseover',()=>lines.forEach(x=>x.setStyle({weight:weight+3})));
+      l.on('mouseout',()=>lines.forEach(x=>x.setStyle({weight})));
+      l.on('popupopen',e=>{const b=e.popup&&e.popup._contentNode&&e.popup._contentNode.querySelector('.to-explore');if(b)b.onclick=()=>mapToExplore(s.name);});
+    });
+    L.layerGroup(layers).addTo(state.mapLayer);
+    state.corridorMain[s.name]=lines[0];state.corridorBounds[s.name]=cbounds;
+    if(cbounds.length){
+      const mid=cbounds[Math.floor(cbounds.length/2)];
+      const icon=L.divIcon({className:'',html:'<div class="map-badge">'+s.rank+'</div>',iconSize:[22,22],iconAnchor:[11,11]});
+      L.marker(mid,{icon,title:'#'+s.rank+' '+s.name}).addTo(state.labelLayer).on('click',()=>{const m=state.corridorMain[s.name];if(m)m.openPopup();});
+    }
   });
-  if(bounds.length)state.map.fitBounds(bounds,{padding:[24,24]});
-  const legend=document.getElementById('mapLegend');
-  if(legend){
-    const ends=metric==='rank'?['Lower priority','Retime first']
-      :metric==='speed'?['Faster','Slowest']:['Best','Worst'];
-    const title=metric==='rank'?'Priority':metric==='delay'?'Delay':metric==='speed'?'85th speed':'Reliability';
-    legend.innerHTML='<span style="margin-right:4px;color:var(--muted)">'+title+':</span>'+
-      MAP_RAMP.map((c,i)=>`<span class="lg-key"><span class="lg-sw" style="background:${c}"></span>${i===0?ends[0]:i===4?ends[1]:''}</span>`).join('');
-  }
+  state.mapBounds=allBounds;
+  if(allBounds.length)state.map.fitBounds(allBounds,{padding:[28,28]});
+  buildMapJump(vals.map(o=>o.s));
+  buildMapLegend(metric,drawList);
 }
 
 /* ============================================================
@@ -2833,6 +2951,7 @@ async function loadRepoData(auto){
     if(c.ok){handleFile(3,new File([await c.arrayBuffer()],'3_Corridor_Data.csv',{type:'text/csv'}));got.push('File 3');}
     const i=await fetch(base+'XD_Identification.csv');
     if(i.ok){handleFile(2,new File([await i.arrayBuffer()],'XD_Identification.csv',{type:'text/csv'}));got.push('File 2');}
+    try{const gj=await fetch(base+'xd_segments.geojson');if(gj.ok){state.segLine=parseSegGeo(await gj.json());if(Object.keys(state.segLine).length)got.push('geometry');}}catch(e){}
     let meta=null;
     try{const mr=await fetch(base+'latest_meta.json');if(mr.ok)meta=await mr.json();}catch(e){}
     let dataLoaded=false;
@@ -3263,6 +3382,7 @@ if(location.protocol==='file:'){
   el.addEventListener('change',()=>{try{localStorage.setItem('sps_'+id,el.value);}catch(e){}});
 });
 
+try{if(localStorage.getItem('sb_collapsed')==='1')document.body.classList.add('sb-collapsed');}catch(e){}
 railState();
 autoStart();   // hosted: auto-load + process → land on Rankings; local file:// → Upload tab
 </script>
