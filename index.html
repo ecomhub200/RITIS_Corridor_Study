@@ -1389,27 +1389,31 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
 
 /* ---------- KPI cards ---------- */
 function renderKPIs(){
-  const top=state.systems&&state.systems.find(s=>s.hasData);
-  const avg=a=>{const v=a.filter(isFinite);return v.length?v.reduce((x,y)=>x+y,0)/v.length:NaN;};
+  const S=state.systems?state.systems.filter(s=>s.hasData):[];
   const f=(v,d=1)=>isFinite(v)?v.toFixed(d):'—';
+  const mean=a=>{const v=a.filter(isFinite);return v.length?v.reduce((x,y)=>x+y,0)/v.length:NaN;};
   let kpis;
-  if(!top){
-    kpis=[{cls:'k-gold',lab:'#1 Retiming Priority',val:'—',sub:'No corridors with data'}];
+  if(!S.length){
+    kpis=[{cls:'',lab:'Network summary',val:'—',sub:'No corridors with data'}];
   }else{
-    const medSpd=avg(top.dirs.map(d=>d.spd&&d.spd.p50));
-    const p85Spd=avg(top.dirs.map(d=>d.spd&&d.spd.p85));
-    const meanTT=avg(top.dirs.map(d=>avg(d.hourly||[])));
-    const ffTT=avg(top.dirs.map(d=>d.refTT));
-    const congMin=(isFinite(meanTT)&&isFinite(ffTT))?meanTT-ffTT:NaN;
-    const congPct=(isFinite(congMin)&&ffTT)?congMin/ffTT*100:NaN;
-    const per=[['AM',top.amInt],['Mid-day',top.mdInt],['PM',top.pmInt]].filter(p=>isFinite(p[1])).sort((a,b)=>b[1]-a[1]);
-    const worst=per[0];
-    const bear=top.dirs[0]&&top.dirs[0].bearing;
+    // dedupe signals & centerline miles by road (the two directions share the same road)
+    const byRoad={};S.forEach(s=>{(byRoad[roadOf(s.name)]=byRoad[roadOf(s.name)]||[]).push(s);});
+    let totalSignals=0,totalMiles=0;
+    Object.keys(byRoad).forEach(r=>{const arr=byRoad[r];
+      totalSignals+=Math.max.apply(null,arr.map(s=>s.nSignals||0));
+      totalMiles+=Math.max.apply(null,arr.map(s=>Math.max.apply(null,s.dirs.map(d=>d.totalMiles||0))));
+    });
+    const avgDelay=mean(S.map(s=>s.normDelay));          // sec / signal
+    const avgIQR=mean(S.map(s=>s.normIQR));              // min / signal
+    const worst=S.reduce((m,s)=>(isFinite(s.normDelay)&&(!m||s.normDelay>m.normDelay))?s:m,null);
+    const am=mean(S.map(s=>s.amInt))*60,md=mean(S.map(s=>s.mdInt))*60,pm=mean(S.map(s=>s.pmInt))*60;
+    const per=[['AM',am],['Mid-day',md],['PM',pm]].filter(p=>isFinite(p[1])).sort((a,b)=>b[1]-a[1]);
+    const wp=per[0];
     kpis=[
-      {cls:'k-gold',lab:'#1 Retiming Priority',val:esc(top.name),sub:'Combined Score '+f(top.score,0)+(bear?' · '+esc(bear)+'-bound':'')},
-      {cls:'k-orange',lab:'Delay per signal',val:f(top.normDelay,1)+' sec',sub:worst?('Heaviest in the '+worst[0]+' peak — '+f(worst[1]*60,1)+' s/sig'):('Day-to-day swing ±'+f(top.normIQR,2)+' min')},
-      {cls:'',lab:'Operating speed',val:f(medSpd,0)+' mph',sub:'Median space-mean · 85th-pct '+f(p85Spd,0)+' mph'},
-      {cls:'k-green',lab:'Corridor travel time',val:f(meanTT,1)+' min',sub:isFinite(congMin)?('+'+f(congMin,1)+' min over free-flow'+(isFinite(congPct)?(' ('+f(congPct,0)+'%)'):'')):'one-way, signal-timed'}
+      {cls:'',lab:'Signalized corridors',val:String(S.length),sub:totalSignals+' signalized intersections · '+f(totalMiles,0)+' centerline mi'},
+      {cls:'k-orange',lab:'Avg delay per signal',val:f(avgDelay,1)+' sec',sub:'Network average · worst '+(worst?('#'+worst.rank+' = '+f(worst.normDelay,1)+' s'):'—')},
+      {cls:'k-gold',lab:'Delay by time of day',val:wp?(wp[0]+' peak · '+f(wp[1],1)+' sec'):'—',sub:'AM '+f(am,1)+' · Mid '+f(md,1)+' · PM '+f(pm,1)+' s/signal'},
+      {cls:'k-green',lab:'Network reliability',val:'±'+f(avgIQR,2)+' min',sub:'Avg day-to-day delay swing per signal'}
     ];
   }
   document.getElementById('kpiRow').innerHTML=kpis.map(k=>
