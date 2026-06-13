@@ -89,9 +89,18 @@ def call(url, data=None):
 
 print(f'Submitting export: {start} -> {end_excl} (exclusive), {GRAN}-min, {UNITS}')
 code, raw = call(f'{BASE}/submit/export?key={KEY}', json.dumps(BODY).encode())
-resp = json.loads(raw or b'{}')
+try:
+    resp = json.loads(raw or b'{}')
+except json.JSONDecodeError:
+    body = (raw or b'')[:1000].decode('utf-8', 'replace')
+    sys.exit(f'Submit returned a non-JSON response (HTTP {code}). First 1000 bytes:\n'
+             f'{body}\n---\n'
+             'A non-JSON body usually means an auth or endpoint problem (an HTML / '
+             'plain-text error page), not a body-schema mismatch. Verify the '
+             '/submit/export URL, how the key is passed, and the BODY field names '
+             'against https://pda-api.ritis.org/v2/docs.')
 if code != 200 or 'id' not in resp:
-    sys.exit(f'Submit failed (HTTP {code}): {raw[:600]}\n'
+    sys.exit(f'Submit failed (HTTP {code}): {(raw or b"")[:600]}\n'
              'If this is a schema error, compare BODY against '
              'https://pda-api.ritis.org/v2/docs and fix the field names above.')
 job = resp['id']
