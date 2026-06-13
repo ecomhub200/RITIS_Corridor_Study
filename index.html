@@ -2400,6 +2400,12 @@ function buildReportPDF(sel,scope){
     y+=hh+9;doc.setTextColor(...PDFC.ink);
   }
   function image(url,w,h){ensure(h+8);doc.addImage(url,'PNG',ML,y,w,h);y+=h+14;}
+  function captionedChart(t,url,w,h){          // sharp vector title above the chart image
+    ensure(h+34);
+    doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(...PDFC.navy);
+    doc.text(t,ML,y);y+=12;doc.setTextColor(...PDFC.ink);
+    doc.addImage(url,'PNG',ML,y,w,h);y+=h+16;
+  }
   function table(head,body,extra){
     doc.autoTable(Object.assign({
       head:[head],body,startY:y,
@@ -2471,11 +2477,12 @@ function buildReportPDF(sel,scope){
     const scoreImg=chartToImg({type:'bar',data:{
       labels:sel.map(s=>s.name),
       datasets:[{label:'Combined Score',data:sel.map(s=>s.score),
-        backgroundColor:sel.map(s=>s.rank===1?'#d4a017':'#d23b2f'),borderRadius:4}]},
-      options:{plugins:{legend:{display:false},title:{display:true,text:'Combined Score by Corridor'}},
-        scales:{x:{ticks:{autoSkip:false,maxRotation:60,minRotation:45,font:{size:9}}},
-                y:{beginAtZero:true,title:{display:true,text:'Combined Score'}}}}},900,400);
-    image(scoreImg,CW,CW*400/900);
+        backgroundColor:sel.map(s=>s.rank===1?'#d4a017':s.rank<=3?'#f26822':'#1d3f94'),borderRadius:4}]},
+      options:{plugins:{legend:{display:false}},layout:{padding:{top:26}},
+        scales:{x:{ticks:{autoSkip:false,maxRotation:55,minRotation:40,font:{size:11}}},
+                y:{beginAtZero:true,title:{display:true,text:'Combined Score',font:{size:12}},ticks:{font:{size:11}}}}},
+      plugins:[{id:'barvals',afterDatasetsDraw(ch){const m=ch.getDatasetMeta(0),ctx=ch.ctx;ctx.save();ctx.font='700 17px Helvetica,Arial,sans-serif';ctx.fillStyle='#1a2540';ctx.textAlign='center';m.data.forEach((b,i)=>{const v=ch.data.datasets[0].data[i];if(isFinite(v))ctx.fillText(v.toFixed(1),b.x,b.y-9);});ctx.restore();}}]},900,430);
+    captionedChart('Combined Score by Corridor',scoreImg,CW,CW*430/900);
   }
 
   /* ================= RANKING TABLE ================= */
@@ -2532,9 +2539,9 @@ function buildReportPDF(sel,scope){
         data:Array(24).fill(d.refTT),borderColor:palette[i%4],borderDash:[6,5],pointRadius:0,borderWidth:1.2});
     });
     const img=chartToImg({type:'line',data:{labels:hours,datasets},
-      options:{plugins:{legend:{labels:{font:{size:10}}},title:{display:true,text:'Hourly Travel Time by Direction'}},
-        scales:{y:{title:{display:true,text:'Corridor travel time (min)'}}}}},880,320);
-    image(img,CW,CW*320/880);
+      options:{plugins:{legend:{labels:{font:{size:11}}}},
+        scales:{y:{title:{display:true,text:'Corridor travel time (min)',font:{size:11}},ticks:{font:{size:10}}},x:{ticks:{font:{size:10}}}}}},880,330);
+    captionedChart('Hourly Travel Time by Direction',img,CW,CW*330/880);
   });
 
   /* ================= METHODOLOGY (brief) ================= */
