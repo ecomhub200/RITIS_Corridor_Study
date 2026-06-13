@@ -1371,7 +1371,7 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
   document.getElementById('resultsArea').style.display='block';
   document.getElementById('printMeta').textContent=
     `Generated ${new Date().toLocaleString()} — ${state.systems.filter(s=>s.hasData).length} of ${state.systems.length} corridors with data, ${rows.toLocaleString()} probe records analyzed (days: ${[...cfg.dows].sort().map(d=>DOWS[d]).join('/')}).`;
-  renderKPIs(secs);
+  renderKPIs();
   renderDiagnostics();
   buildPicker('speedPick');
   renderSpeed();
@@ -1388,14 +1388,30 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
 }
 
 /* ---------- KPI cards ---------- */
-function renderKPIs(secs){
-  const top=state.systems[0];
-  const kpis=[
-    {cls:'k-gold',lab:'#1 Retiming Priority',val:top?top.name:'—',sub:top?('Combined Score '+top.score.toFixed(2)):''},
-    {cls:'',lab:'Corridors with data',val:state.systems.filter(s=>s.hasData).length+' / '+state.systems.length,sub:state.results.length+' directional runs defined'},
-    {cls:'k-orange',lab:'Probe records read',val:state.rowsProcessed.toLocaleString(),sub:state.rowsMatched.toLocaleString()+' matched to corridors'},
-    {cls:'k-green',lab:'Processing time',val:secs+'s',sub:'Streamed in your browser'}
-  ];
+function renderKPIs(){
+  const top=state.systems&&state.systems.find(s=>s.hasData);
+  const avg=a=>{const v=a.filter(isFinite);return v.length?v.reduce((x,y)=>x+y,0)/v.length:NaN;};
+  const f=(v,d=1)=>isFinite(v)?v.toFixed(d):'—';
+  let kpis;
+  if(!top){
+    kpis=[{cls:'k-gold',lab:'#1 Retiming Priority',val:'—',sub:'No corridors with data'}];
+  }else{
+    const medSpd=avg(top.dirs.map(d=>d.spd&&d.spd.p50));
+    const p85Spd=avg(top.dirs.map(d=>d.spd&&d.spd.p85));
+    const meanTT=avg(top.dirs.map(d=>avg(d.hourly||[])));
+    const ffTT=avg(top.dirs.map(d=>d.refTT));
+    const congMin=(isFinite(meanTT)&&isFinite(ffTT))?meanTT-ffTT:NaN;
+    const congPct=(isFinite(congMin)&&ffTT)?congMin/ffTT*100:NaN;
+    const per=[['AM',top.amInt],['Mid-day',top.mdInt],['PM',top.pmInt]].filter(p=>isFinite(p[1])).sort((a,b)=>b[1]-a[1]);
+    const worst=per[0];
+    const bear=top.dirs[0]&&top.dirs[0].bearing;
+    kpis=[
+      {cls:'k-gold',lab:'#1 Retiming Priority',val:esc(top.name),sub:'Combined Score '+f(top.score,0)+(bear?' · '+esc(bear)+'-bound':'')},
+      {cls:'k-orange',lab:'Delay per signal',val:f(top.normDelay,1)+' sec',sub:worst?('Heaviest in the '+worst[0]+' peak — '+f(worst[1]*60,1)+' s/sig'):('Day-to-day swing ±'+f(top.normIQR,2)+' min')},
+      {cls:'',lab:'Operating speed',val:f(medSpd,0)+' mph',sub:'Median space-mean · 85th-pct '+f(p85Spd,0)+' mph'},
+      {cls:'k-green',lab:'Corridor travel time',val:f(meanTT,1)+' min',sub:isFinite(congMin)?('+'+f(congMin,1)+' min over free-flow'+(isFinite(congPct)?(' ('+f(congPct,0)+'%)'):'')):'one-way, signal-timed'}
+    ];
+  }
   document.getElementById('kpiRow').innerHTML=kpis.map(k=>
     `<div class="kpi ${k.cls}"><div class="lab">${k.lab}</div><div class="val">${k.val}</div><div class="sub">${k.sub}</div></div>`).join('');
 }
@@ -1421,7 +1437,7 @@ function recalcScores(){
   noData.forEach(s=>{s.rank=0;s.score=0;});
   state.systems=[...withData,...noData];
   renderOCRA();
-  renderKPITop();
+  renderKPIs();
   drawScoreChart();drawDelayChart();drawScatter();
   const cp=document.getElementById('cmpPick');
   if(cp&&cp.children.length){buildPicker('cmpPick');buildPicker('rptPick');buildPicker('drillPick');drawDrilldown();}
