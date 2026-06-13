@@ -37,6 +37,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <style>
   :root{
     --blue:#1d3f94; --blue-deep:#102a66; --blue-soft:#eef3fc;
@@ -317,6 +319,15 @@
   .ms-chip button{border:none;background:rgba(29,63,148,.14);color:var(--blue);width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
   .ms-chip button:hover{background:var(--blue);color:#fff}
   .ms.disabled{opacity:.5;pointer-events:none}
+  /* map tab */
+  .map-controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+  .map-cby{font-size:12.5px;font-weight:700;color:var(--muted);display:flex;align-items:center}
+  .map-legend{display:flex;gap:4px;flex-wrap:wrap;align-items:center;font-size:11.5px;font-weight:600;color:var(--ink)}
+  .map-legend .lg-key{display:inline-flex;align-items:center;gap:5px;margin-right:6px}
+  .map-legend .lg-sw{width:16px;height:10px;border-radius:2px;display:inline-block}
+  #corridorMap{height:580px;border-radius:12px;border:1px solid var(--line);overflow:hidden;z-index:1}
+  .leaflet-popup-content{font-family:'Segoe UI',system-ui,sans-serif;font-size:12.5px}
+  .leaflet-popup-content b{color:var(--blue)}
   /* collapsible diagnostics details */
   .diag-details{border:1px solid var(--line);border-radius:10px;margin-top:10px;background:#fafcff;overflow:hidden}
   .diag-details>summary{list-style:none;cursor:pointer;padding:10px 14px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
@@ -406,6 +417,7 @@
     <div class="sb-sec">Analysis</div>
     <button class="sb-item locked" data-nav="rankings" onclick="setView('rankings')"><span class="sb-ico">🏆</span> Rankings</button>
     <button class="sb-item locked" data-nav="explore" onclick="setView('explore')"><span class="sb-ico">🔍</span> Explore</button>
+    <button class="sb-item locked" data-nav="map" onclick="setView('map')"><span class="sb-ico">🗺️</span> Map</button>
     <button class="sb-item locked" data-nav="reports" onclick="setView('reports')"><span class="sb-ico">📑</span> Reports</button>
   </nav>
   <div class="sb-foot">Runs entirely in your browser.<br>No data leaves your computer.</div>
@@ -613,6 +625,29 @@
   <!-- KPI cards -->
   <div class="kpi-row reveal" id="kpiRow" data-view="rankings"></div>
 
+  <!-- Map -->
+  <div class="panel reveal" data-view="map">
+    <div class="panel-head">
+      <div class="panel-ico green">🗺️</div>
+      <div><h2>Corridor Map</h2><p>Each corridor drawn from its XD segments, colored by the selected metric. Click a corridor for its numbers.</p></div>
+    </div>
+    <div class="panel-body">
+      <div class="map-controls noprint">
+        <label class="map-cby">Color by
+          <select id="mapMetric" class="corr-select" onchange="renderMap()" style="margin:0 0 0 8px;min-width:200px">
+            <option value="rank">Priority rank (OCRA)</option>
+            <option value="delay">Delay per signal (sec)</option>
+            <option value="speed">85th-percentile speed (mph)</option>
+            <option value="iqr">Reliability — day-to-day swing (IQR)</option>
+          </select>
+        </label>
+        <div id="mapLegend" class="map-legend"></div>
+      </div>
+      <div id="corridorMap"></div>
+      <div id="mapNote" class="note-box noprint" style="display:none"></div>
+    </div>
+  </div>
+
   <!-- Coverage diagnostics -->
   <div class="panel reveal" id="diagPanel" data-view="upload">
     <div class="panel-head">
@@ -819,6 +854,7 @@ const VIEW_META={
   upload:['Upload Data','Load your corridor + probe data, set the window, and process'],
   rankings:['Rankings','Prioritized corridors by OCRA score'],
   explore:['Explore Corridors','Hourly travel time, delay & speed — driven by your selection'],
+  map:['Corridor Map','Geographic view of corridors, colored by metric'],
   reports:['Reports','Build a print-ready PDF / CSV report']
 };
 function setView(name){
@@ -834,6 +870,7 @@ function setView(name){
   window.scrollTo(0,0);
   if(name==='explore'){ buildPicker('cmpPick'); buildPicker('drillPick'); buildPicker('speedPick'); drawDrilldown(); renderSpeed(); }
   if(name==='reports'){ buildPicker('rptPick'); updateRptScope(); }
+  if(name==='map'){ setTimeout(()=>{ if(state.map)state.map.invalidateSize(); renderMap(); }, 60); }
 }
 // reflect data-loaded state in the sidebar + topbar status
 function railState(){
@@ -909,21 +946,28 @@ function handleFile(n,f){
   }
   if(n===2){
     Papa.parse(f,{header:true,skipEmptyLines:true,complete:res=>{
-      const miles={},roads={};let cnt=0;
+      const miles={},roads={},geo={};let cnt=0;
       const cols=res.meta.fields.map(c=>c.trim().toLowerCase());
+      const col=n=>{const i=cols.findIndex(c=>c===n);return i>=0?res.meta.fields[i]:null;};
       const xdCol=res.meta.fields[cols.findIndex(c=>c==='xd'||c==='xd_id')];
       const miCol=res.meta.fields[cols.findIndex(c=>c==='miles')];
       const rdCol=res.meta.fields[cols.findIndex(c=>c==='road-name'||c==='road name'||c==='roadname'||c==='road')];
+      const slaC=col('start_latitude'),sloC=col('start_longitude'),elaC=col('end_latitude'),eloC=col('end_longitude');
+      const hasGeo=slaC&&sloC&&elaC&&eloC;
       if(!xdCol||!miCol){setStatus(2,'✗ Could not find "xd" and "miles" columns — is this the XD Identification file?','err');return;}
       res.data.forEach(r=>{
         const id=String(r[xdCol]).trim(),m=parseFloat(r[miCol]);
         if(id&&isFinite(m)){
           miles[id]=m;cnt++;
           if(rdCol){const rd=String(r[rdCol]||'').trim();if(rd)roads[id]=rd;}
+          if(hasGeo){
+            const a=parseFloat(r[slaC]),b=parseFloat(r[sloC]),c=parseFloat(r[elaC]),d=parseFloat(r[eloC]);
+            if(isFinite(a)&&isFinite(b)&&isFinite(c)&&isFinite(d))geo[id]=[a,b,c,d];
+          }
         }
       });
-      state.segMiles=miles;state.segRoads=roads;
-      setStatus(2,`✓ ${f.name}\n${cnt} XD segments with distances`,'ok');
+      state.segMiles=miles;state.segRoads=roads;state.segGeo=geo;
+      setStatus(2,`✓ ${f.name}\n${cnt} XD segments with distances`+(Object.keys(geo).length?` · ${Object.keys(geo).length} with coordinates`:''),'ok');
     },error:err=>setStatus(2,'✗ '+err.message,'err')});
     return;
   }
@@ -1535,6 +1579,75 @@ function drawScatter(){
       scales:{x:{title:{display:true,text:'Typical delay per signal (seconds) — more delay →'},beginAtZero:true},
               y:{title:{display:true,text:'Day-to-day variability (IQR, min/signal) — less predictable →'},beginAtZero:true}}},
     plugins:[quadrantPlugin]});
+}
+
+/* ---------- map ---------- */
+function mapMetricVal(s,metric){
+  if(metric==='rank')return s.rank;
+  if(metric==='delay')return isFinite(s.normDelay)?s.normDelay:null;
+  if(metric==='iqr')return isFinite(s.normIQR)?s.normIQR:null;
+  if(metric==='speed'){
+    const v=s.dirs.map(d=>d.spd&&d.spd.p85).filter(isFinite);
+    return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;
+  }
+  return null;
+}
+const MAP_RAMP=['#1d3f94','#3f7fb0','#7fb08a','#e8a13e','#c0392b']; // cool → hot (hot = retime first)
+function renderMap(){
+  const host=document.getElementById('corridorMap'),note=document.getElementById('mapNote');
+  if(!host)return;
+  if(typeof L==='undefined'||!window.L){
+    if(note){note.style.display='block';note.innerHTML='<b>Map library couldn’t load.</b> The map needs an internet connection (Leaflet + OpenStreetMap tiles). Every other tab works offline.';}
+    return;
+  }
+  if(note)note.style.display='none';
+  if(!state.systems)return;
+  const metric=(document.getElementById('mapMetric')||{}).value||'rank';
+  if(!state.map){
+    state.map=L.map('corridorMap',{scrollWheelZoom:true}).setView([37.55,-77.45],11);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,
+      attribution:'&copy; OpenStreetMap contributors'}).addTo(state.map);
+    state.mapLayer=L.layerGroup().addTo(state.map);
+  }
+  state.mapLayer.clearLayers();
+  const sys=state.systems.filter(s=>s.hasData);
+  const vals=sys.map(s=>({s,v:mapMetricVal(s,metric)})).filter(o=>o.v!=null);
+  const hot=o=>(metric==='rank'||metric==='speed')?-o.v:o.v;     // hot = worse/priority
+  const hs=vals.map(hot).sort((a,b)=>a-b);
+  const qBreak=q=>hs.length?hs[Math.min(hs.length-1,Math.floor(q*(hs.length-1)))]:0;
+  const breaks=[qBreak(.2),qBreak(.4),qBreak(.6),qBreak(.8)];
+  const colorFor=o=>{let c=0,hv=hot(o);for(const b of breaks)if(hv>b)c++;return MAP_RAMP[c];};
+  const fmt=(v,d=1)=>isFinite(v)?v.toFixed(d):'—';
+  const bounds=[];
+  vals.forEach(o=>{
+    const s=o.s,color=colorFor(o),grp=[];
+    s.dirs.forEach(r=>{
+      const corr=state.corridors&&state.corridors.find(c=>c.idx===r.idx);if(!corr)return;
+      corr.segs.forEach(xd=>{
+        const g=state.segGeo&&state.segGeo[xd];if(!g)return;
+        const line=L.polyline([[g[0],g[1]],[g[2],g[3]]],{color,weight:5,opacity:.9});
+        line.on('mouseover',()=>line.setStyle({weight:8,opacity:1}));
+        line.on('mouseout',()=>line.setStyle({weight:5,opacity:.9}));
+        grp.push(line);bounds.push([g[0],g[1]],[g[2],g[3]]);
+      });
+    });
+    if(!grp.length)return;
+    const sp=mapMetricVal(s,'speed');
+    const popup=`<b>#${s.rank} ${esc(s.name)}</b><br>Combined score: ${fmt(s.score,2)}<br>`+
+      `Delay/int: ${fmt(s.normDelay,1)} sec &middot; IQR: ${fmt(s.normIQR,3)} min<br>`+
+      `85th-pct speed: ${fmt(sp,1)} mph &middot; Signals: ${s.nSignals}`;
+    grp.forEach(l=>l.bindPopup(popup));
+    L.layerGroup(grp).addTo(state.mapLayer);
+  });
+  if(bounds.length)state.map.fitBounds(bounds,{padding:[24,24]});
+  const legend=document.getElementById('mapLegend');
+  if(legend){
+    const ends=metric==='rank'?['Lower priority','Retime first']
+      :metric==='speed'?['Faster','Slowest']:['Best','Worst'];
+    const title=metric==='rank'?'Priority':metric==='delay'?'Delay':metric==='speed'?'85th speed':'Reliability';
+    legend.innerHTML='<span style="margin-right:4px;color:var(--muted)">'+title+':</span>'+
+      MAP_RAMP.map((c,i)=>`<span class="lg-key"><span class="lg-sw" style="background:${c}"></span>${i===0?ends[0]:i===4?ends[1]:''}</span>`).join('');
+  }
 }
 
 /* ============================================================
