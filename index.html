@@ -329,6 +329,7 @@
   #corridorMap:fullscreen{height:100vh;border-radius:0}
   .map-sel{margin-left:6px;padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-size:12.5px;font-weight:600;background:#fff;font-family:inherit;color:var(--ink)}
   .map-badge{background:#102a66;color:#fff;border:2px solid #fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font:700 10px 'Segoe UI',sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.45)}
+  .map-arrow{font-size:14px;font-weight:900;line-height:1;color:#102a66;text-shadow:0 0 2px #fff,0 0 3px #fff,0 0 4px #fff}
   .leaflet-popup-content{font-family:'Segoe UI',system-ui,sans-serif;font-size:12.5px}
   .leaflet-popup-content b{color:var(--blue)}
   /* collapsible sidebar (desktop) */
@@ -662,6 +663,12 @@
             <option value="10">Top 10</option>
             <option value="5">Top 5</option>
             <option value="3">Top 3</option>
+          </select>
+        </label>
+        <label class="map-cby">Directions
+          <select id="mapDir" class="map-sel" onchange="renderMap()">
+            <option value="both">Both (offset)</option>
+            <option value="primary">Higher-priority per road</option>
           </select>
         </label>
         <label class="map-cby">Basemap
@@ -1709,6 +1716,18 @@ function buildMapLegend(metric,drawList){
   html+='<span style="color:var(--muted);margin-left:2px">— dark red = retime first</span>';
   legend.innerHTML=html;
 }
+function roadOf(name){return String(name).split('_')[0].trim();}
+function offsetRight(pts,off){    // shift a polyline to the right of travel → opposing directions separate
+  if(!pts||pts.length<2)return pts;
+  const out=[];
+  for(let i=0;i<pts.length;i++){
+    const a=pts[Math.max(0,i-1)],b=pts[Math.min(pts.length-1,i+1)];
+    let dlon=b[1]-a[1],dlat=b[0]-a[0];const len=Math.hypot(dlon,dlat)||1;dlon/=len;dlat/=len;
+    const latC=Math.cos(pts[i][0]*Math.PI/180)||1;
+    out.push([pts[i][0]+(-dlon)*off, pts[i][1]+(dlat)*off/latC]);
+  }
+  return out;
+}
 function renderMap(){
   const host=document.getElementById('corridorMap'),note=document.getElementById('mapNote');
   if(!host)return;
@@ -1720,6 +1739,7 @@ function renderMap(){
   if(!state.systems)return;
   const metric=(document.getElementById('mapMetric')||{}).value||'rank';
   const topN=+((document.getElementById('mapTopN')||{}).value||0);
+  const dirMode=(document.getElementById('mapDir')||{}).value||'both';
   if(!state.map){
     state.map=L.map('corridorMap',{scrollWheelZoom:true}).setView([37.55,-77.45],11);
     state.mapLayer=L.layerGroup().addTo(state.map);
@@ -1729,7 +1749,12 @@ function renderMap(){
   state.mapLayer.clearLayers();state.labelLayer.clearLayers();
   let sys=state.systems.filter(s=>s.hasData);
   if(topN>0)sys=sys.slice().sort((a,b)=>a.rank-b.rank).slice(0,topN);
-  const vals=sys.map(s=>({s,v:mapMetricVal(s,metric)})).filter(o=>o.v!=null);
+  let vals=sys.map(s=>({s,v:mapMetricVal(s,metric)})).filter(o=>o.v!=null);
+  const byRoad={};state.systems.filter(s=>s.hasData).forEach(s=>{(byRoad[roadOf(s.name)]=byRoad[roadOf(s.name)]||[]).push(s);});
+  if(dirMode==='primary'){                       // keep only the higher-ranked direction per road
+    const best={};vals.forEach(o=>{const r=roadOf(o.s.name);if(!best[r]||o.s.rank<best[r].s.rank)best[r]=o;});
+    vals=Object.values(best);
+  }
   const hot=o=>(metric==='rank'||metric==='speed')?-o.v:o.v;
   const hs=vals.map(hot).sort((a,b)=>a-b);
   const qBreak=q=>hs.length?hs[Math.min(hs.length-1,Math.floor(q*(hs.length-1)))]:0;
@@ -1744,16 +1769,18 @@ function renderMap(){
       const corr=state.corridors&&state.corridors.find(c=>c.idx===r.idx);if(!corr)return;
       corr.segs.forEach(xd=>{
         const g=state.segGeo&&state.segGeo[xd];if(!g)return;
-        const pts=segLatLngs(xd,g);
-        layers.push(L.polyline(pts,{color:'#ffffff',weight:weight+3,opacity:.8}));  // casing
+        const pts=offsetRight(segLatLngs(xd,g),0.00016);    // ~18 m offset so EB/WB sit side-by-side
+        layers.push(L.polyline(pts,{color:'#ffffff',weight:weight+3,opacity:.8}));
         const main=L.polyline(pts,{color,weight,opacity:.95});
         layers.push(main);lines.push(main);
         pts.forEach(pp=>{allBounds.push(pp);cbounds.push(pp);});
       });
     });
     if(!layers.length)return;
-    const sp=mapMetricVal(s,'speed');
-    const popup=`<b>#${s.rank} ${esc(s.name)}</b><br>Combined score: ${fmt(s.score,2)}<br>Delay/int: ${fmt(s.normDelay,1)} sec &middot; IQR: ${fmt(s.normIQR,3)} min<br>85th-pct speed: ${fmt(sp,1)} mph &middot; Signals: ${s.nSignals}<br><button class="to-explore" style="margin-top:7px;border:none;background:#1d3f94;color:#fff;font-weight:700;border-radius:6px;padding:5px 11px;cursor:pointer">View in Explore →</button>`;
+    const grp=(byRoad[roadOf(s.name)]||[s]).slice().sort((a,b)=>a.rank-b.rank);
+    const rowsH=grp.map(d=>{const dsp=mapMetricVal(d,'speed'),hi=d.name===s.name?' style="background:#eef3fc"':'';
+      return `<tr${hi}><td style="font-weight:700;color:#1d3f94;padding-right:9px">#${d.rank}</td><td style="padding-right:9px">${esc((d.dirs[0]&&d.dirs[0].bearing)||'')}</td><td style="padding-right:9px">${fmt(d.score,2)}</td><td style="padding-right:9px">${fmt(d.normDelay,1)}</td><td>${fmt(dsp,1)}</td></tr>`;}).join('');
+    const popup=`<b>${esc(roadOf(s.name))}</b> <span style="color:#64748f">· ${grp.length} direction${grp.length>1?'s':''}</span><table style="border-collapse:collapse;margin:5px 0 3px;font-size:11.5px"><tr style="color:#64748f;font-weight:700"><th style="text-align:left;padding-right:9px">Rank</th><th style="padding-right:9px">Dir</th><th style="padding-right:9px">Score</th><th style="padding-right:9px">Delay</th><th>85th</th></tr>${rowsH}</table><button class="to-explore" style="margin-top:4px;border:none;background:#1d3f94;color:#fff;font-weight:700;border-radius:6px;padding:5px 11px;cursor:pointer">View in Explore →</button>`;
     lines.forEach(l=>{
       l.bindPopup(popup);
       l.bindTooltip('#'+s.rank+' '+esc(s.name),{sticky:true,direction:'top'});
@@ -1763,15 +1790,17 @@ function renderMap(){
     });
     L.layerGroup(layers).addTo(state.mapLayer);
     state.corridorMain[s.name]=lines[0];state.corridorBounds[s.name]=cbounds;
-    if(cbounds.length){
-      const mid=cbounds[Math.floor(cbounds.length/2)];
-      const icon=L.divIcon({className:'',html:'<div class="map-badge">'+s.rank+'</div>',iconSize:[22,22],iconAnchor:[11,11]});
-      L.marker(mid,{icon,title:'#'+s.rank+' '+s.name}).addTo(state.labelLayer).on('click',()=>{const m=state.corridorMain[s.name];if(m)m.openPopup();});
+    if(cbounds.length>1){
+      const mid=cbounds[Math.floor(cbounds.length*0.5)];
+      L.marker(mid,{icon:L.divIcon({className:'',html:'<div class="map-badge">'+s.rank+'</div>',iconSize:[22,22],iconAnchor:[11,11]}),title:'#'+s.rank+' '+s.name}).addTo(state.labelLayer).on('click',()=>{const m=state.corridorMain[s.name];if(m)m.openPopup();});
+      const ai=Math.min(cbounds.length-1,Math.floor(cbounds.length*0.72)),p0=cbounds[Math.max(0,ai-1)],p1=cbounds[ai];
+      const ang=Math.atan2(-(p1[0]-p0[0]),(p1[1]-p0[1]))*180/Math.PI;
+      L.marker(p1,{icon:L.divIcon({className:'',html:'<div class="map-arrow" style="transform:rotate('+ang.toFixed(0)+'deg)">➤</div>',iconSize:[18,18],iconAnchor:[9,9]}),interactive:false}).addTo(state.labelLayer);
     }
   });
   state.mapBounds=allBounds;
   if(allBounds.length)state.map.fitBounds(allBounds,{padding:[28,28]});
-  buildMapJump(vals.map(o=>o.s));
+  buildMapJump(state.systems.filter(s=>s.hasData));
   buildMapLegend(metric,drawList);
 }
 
