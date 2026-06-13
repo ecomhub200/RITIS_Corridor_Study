@@ -1,0 +1,37 @@
+name: Fetch RITIS probe data
+# Runs every Monday 07:30 UTC = 3:30 AM EDT / 2:30 AM EST
+# (always inside the RITIS-recommended 2:00-4:00 AM Eastern off-peak window)
+on:
+  schedule:
+    - cron: '30 7 * * 1'
+  workflow_dispatch: {}        # adds a manual "Run workflow" button for testing
+
+permissions:
+  contents: write              # allow the robot to commit the data files
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Fetch from RITIS PDA API
+        env:
+          RITIS_KEY: ${{ secrets.RITIS_KEY }}   # repo Settings -> Secrets -> Actions
+          WINDOW_DAYS: '91'                      # rolling window (~13 weeks)
+          GRANULARITY_MIN: '15'
+          TT_UNITS: 'seconds'
+        run: python scripts/ritis_fetch_action.py
+
+      - name: Commit refreshed data for the GitHub Pages tool
+        run: |
+          git config user.name  'ritis-bot'
+          git config user.email 'actions@github.com'
+          git add data/latest.csv.gz data/latest_meta.json
+          git add data/XD_Identification.csv || true
+          git diff --cached --quiet || git commit -m "RITIS data refresh $(date -u +%F)"
+          git push
