@@ -700,10 +700,10 @@
   </div>
 
   <!-- Speed analysis -->
-  <div class="panel reveal" data-view="explore">
+  <div class="panel reveal ovis" data-view="explore">
     <div class="panel-head">
       <div class="panel-ico blue">🚗</div>
-      <div><h2>Speed Analysis — Percentiles by Corridor</h2><p>Space-mean speeds from probe data (selected days, all hours). 85th percentile highlighted.</p></div>
+      <div><h2>Speed Analysis — Percentiles by Corridor</h2><p>Operating speeds from INRIX probe travel times (space-mean, selected days, all hours). The 85th percentile is the screening value used in speed management.</p></div>
     </div>
     <div class="panel-body">
       <div class="panel-tools noprint">
@@ -711,7 +711,14 @@
         <button class="tool-btn" onclick="downloadCorrSpeeds()"><span class="ti">🚦</span> Corridor percentiles (CSV)</button>
         <button class="tool-btn" onclick="downloadSegSpeeds()"><span class="ti">📍</span> Segment percentiles (CSV)</button>
       </div>
-      <div id="speedChartBox" style="position:relative;height:380px;margin-bottom:18px"><canvas id="speedChart"></canvas></div>
+      <div class="ms" id="speedPick"></div>
+      <div class="diag-sub" style="margin-top:4px">Speed percentile ranges — 15th–95th band · median (●) · 85th (◆)</div>
+      <div id="speedChartBox" style="position:relative;height:380px;margin-bottom:20px"><canvas id="speedChart"></canvas></div>
+      <div class="diag-sub">Operating-speed distribution — cumulative % of readings at or below each speed</div>
+      <div id="speedDistBox" style="position:relative;height:330px;margin-bottom:22px"><canvas id="speedDistChart"></canvas></div>
+      <div class="diag-sub">Median speed by period — AM · Mid-day · PM (lower bar = more peak-period congestion)</div>
+      <div id="speedPeriodBox" style="position:relative;height:320px;margin-bottom:18px"><canvas id="speedPeriodChart"></canvas></div>
+      <details class="method"><summary>Full percentile table (per direction)</summary><div class="mbody">
       <div class="table-scroll"><table id="speedTable">
         <thead><tr>
           <th>System Name</th><th>Dir</th><th>Intervals<small>n (15-min)</small></th>
@@ -721,6 +728,7 @@
         </tr></thead>
         <tbody id="speedBody"></tbody>
       </table></div>
+      </div></details>
       <div class="note-box"><b>Engineering note:</b> these are corridor-level <b>space-mean speeds</b> derived from INRIX probe travel times, which run lower than spot speeds measured at a point. The 85th percentile shown here is useful for screening, trend tracking, and before/after retiming comparisons — it is <b>not</b> a substitute for a radar/tube spot-speed study when setting or revising speed limits per MUTCD &amp; VDOT TE memoranda. Per-segment percentiles (closer to a location-specific view) are available in the <b>Speed Percentiles — Segment.csv</b> download.</div>
     </div>
   </div>
@@ -824,7 +832,7 @@ function setView(name){
   if(t)t.textContent=m[0]; if(s)s.textContent=m[1];
   document.body.classList.remove('sb-open');
   window.scrollTo(0,0);
-  if(name==='explore'){ buildPicker('cmpPick'); buildPicker('drillPick'); drawDrilldown(); }
+  if(name==='explore'){ buildPicker('cmpPick'); buildPicker('drillPick'); buildPicker('speedPick'); drawDrilldown(); renderSpeed(); }
   if(name==='reports'){ buildPicker('rptPick'); updateRptScope(); }
 }
 // reflect data-loaded state in the sidebar + topbar status
@@ -1274,8 +1282,8 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
     `Generated ${new Date().toLocaleString()} — ${state.systems.filter(s=>s.hasData).length} of ${state.systems.length} corridors with data, ${rows.toLocaleString()} probe records analyzed (days: ${[...cfg.dows].sort().map(d=>DOWS[d]).join('/')}).`;
   renderKPIs(secs);
   renderDiagnostics();
-  renderSpeedTable();
-  renderSpeedChart();
+  buildPicker('speedPick');
+  renderSpeed();
   if(!state.msSel['drillPick']||!state.msSel['drillPick'].size){const f0=state.systems.find(s=>s.hasData);state.msSel['drillPick']=new Set(f0?[f0.name]:[]);}
   buildPicker('cmpPick');buildPicker('rptPick');buildPicker('drillPick');
   drawDrilldown();
@@ -1490,13 +1498,20 @@ const quadrantPlugin={
     // soft tint on the priority quadrant
     ctx.fillStyle='rgba(242,104,34,.05)';
     ctx.fillRect(mx,ca.top,ca.right-mx,my-ca.top);
-    // quadrant captions
-    ctx.font='700 10.5px Segoe UI,sans-serif';
-    const cap=(t,px,py,align,color)=>{ctx.fillStyle=color;ctx.textAlign=align;ctx.fillText(t,px,py);};
-    cap('SLOW & INCONSISTENT — RETIME FIRST',ca.right-8,ca.top+16,'right','#c0571a');
-    cap('INCONSISTENT DAY TO DAY',ca.left+8,ca.top+16,'left','#8a94ab');
-    cap('CONSISTENTLY SLOW',ca.right-8,ca.bottom-10,'right','#8a94ab');
-    cap('PERFORMING WELL',ca.left+8,ca.bottom-10,'left','#8a94ab');
+    // quadrant captions on subtle pills so they stay legible over the dot cluster
+    ctx.font='700 10px Segoe UI,sans-serif';
+    const cap=(t,px,py,align,color)=>{
+      const w=ctx.measureText(t).width,padX=6;
+      const bx=align==='right'?px-w-padX:px-padX;
+      ctx.fillStyle='rgba(255,255,255,.8)';
+      if(ctx.roundRect){ctx.beginPath();ctx.roundRect(bx,py-11,w+padX*2,15,5);ctx.fill();}
+      else ctx.fillRect(bx,py-11,w+padX*2,15);
+      ctx.fillStyle=color;ctx.textAlign=align;ctx.textBaseline='alphabetic';ctx.fillText(t,px,py);
+    };
+    cap('SLOW & INCONSISTENT — RETIME FIRST',ca.right-10,ca.top+18,'right','#c0571a');
+    cap('INCONSISTENT DAY TO DAY',ca.left+10,ca.top+18,'left','#7c8aa6');
+    cap('CONSISTENTLY SLOW',ca.right-10,ca.bottom-9,'right','#7c8aa6');
+    cap('PERFORMING WELL',ca.left+10,ca.bottom-9,'left','#1d8a4e');
     // rank number centered in each dot — every corridor is identifiable; full name on hover
     ctx.font='700 9px Segoe UI,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
     meta.data.forEach((el,i)=>{ ctx.fillStyle='#fff'; ctx.fillText(String(pts[i].rank),el.x,el.y); });
@@ -1583,7 +1598,7 @@ function renderDiagnostics(){
 const fmt1=v=>isFinite(v)?v.toFixed(1):'—';
 function renderSpeedTable(){
   const tb=document.getElementById('speedBody');tb.innerHTML='';
-  state.systems.filter(s=>s.hasData).forEach(s=>{
+  speedSelSystems().forEach(s=>{
     s.dirs.forEach((d,k)=>{
       if(!d.spd||!d.spd.n)return;
       const tr=document.createElement('tr');
@@ -1601,7 +1616,7 @@ function renderSpeedTable(){
 let speedRangeChart;
 function speedDirs(){
   const out=[];
-  state.systems.filter(s=>s.hasData).forEach(s=>{
+  speedSelSystems().forEach(s=>{
     s.dirs.forEach(d=>{
       if(d.spd&&d.spd.n)out.push(Object.assign({label:s.name+(d.bearing?' ('+d.bearing+')':'')},d.spd));
     });
@@ -1639,6 +1654,80 @@ function renderSpeedChart(){
   const cfgC=speedChartConfig(dirs,false);cfgC.type='bar';
   speedRangeChart=new Chart(document.getElementById('speedChart'),cfgC);
 }
+function speedSelSystems(){
+  const all=state.systems?state.systems.filter(s=>s.hasData):[];
+  const sel=state.msSel&&state.msSel['speedPick'];
+  return (sel&&sel.size)?all.filter(s=>sel.has(s.name)):all;
+}
+let speedPeriodChart;
+function renderSpeedPeriod(){
+  const box=document.getElementById('speedPeriodBox');if(!box)return;
+  const dirs=speedDirs();
+  if(!dirs.length){box.style.display='none';return;}
+  box.style.display='block';box.style.height=Math.min(900,Math.max(220,72+dirs.length*30))+'px';
+  if(speedPeriodChart)speedPeriodChart.destroy();
+  speedPeriodChart=new Chart(document.getElementById('speedPeriodChart'),{type:'bar',
+    data:{labels:dirs.map(d=>d.label),datasets:[
+      {label:'AM median',data:dirs.map(d=>d.am50),backgroundColor:'rgba(29,63,148,.85)'},
+      {label:'Mid-day median',data:dirs.map(d=>d.md50),backgroundColor:'rgba(154,166,189,.95)'},
+      {label:'PM median',data:dirs.map(d=>d.pm50),backgroundColor:'rgba(242,104,34,.9)'}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      plugins:{legend:{labels:{usePointStyle:true,font:{size:11}}},
+        tooltip:{callbacks:{label:c=>c.dataset.label+': '+(isFinite(c.parsed.x)?c.parsed.x.toFixed(1):'—')+' mph'}}},
+      scales:{x:{title:{display:true,text:'Median speed (mph)'},beginAtZero:false},
+              y:{ticks:{font:{size:10.5},autoSkip:false}}}}});
+}
+function corridorSpeedHist(sys){
+  const h=new Float64Array(161);
+  if(!state.segSpeedHist)return h;
+  sys.dirs.forEach(r=>{
+    const corr=state.corridors&&state.corridors.find(c=>c.idx===r.idx);
+    if(!corr)return;
+    corr.segs.forEach(xd=>{const sh=state.segSpeedHist.get(xd);if(sh)for(let v=0;v<sh.length;v++)h[v]+=sh[v];});
+  });
+  return h;
+}
+const speedDist85Plugin={id:'sd85',afterDraw(chart){
+  const {ctx,chartArea:ca,scales:{y}}=chart;if(!y)return;
+  const yy=y.getPixelForValue(85);ctx.save();
+  ctx.strokeStyle='rgba(242,104,34,.65)';ctx.setLineDash([6,4]);ctx.lineWidth=1.2;
+  ctx.beginPath();ctx.moveTo(ca.left,yy);ctx.lineTo(ca.right,yy);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#c0571a';ctx.font='700 10px Segoe UI,sans-serif';ctx.textAlign='left';
+  ctx.fillText('85th percentile',ca.left+6,yy-4);ctx.restore();
+}};
+let speedDistChart;
+function renderSpeedDist(){
+  const box=document.getElementById('speedDistBox');if(!box)return;
+  if(!state.segSpeedHist||!state.segSpeedHist.size){box.style.display='none';return;}
+  box.style.display='block';
+  const explicit=!!(state.msSel&&state.msSel['speedPick']&&state.msSel['speedPick'].size);
+  const sels=speedSelSystems();
+  let series;
+  if(!explicit){
+    const h=new Float64Array(161);sels.forEach(s=>{const ch=corridorSpeedHist(s);for(let v=0;v<161;v++)h[v]+=ch[v];});
+    series=[{name:'All corridors',h}];
+  }else{
+    series=sels.slice(0,8).map(s=>({name:'#'+s.rank+' '+(s.name.length>26?s.name.slice(0,25)+'…':s.name),h:corridorSpeedHist(s)}));
+  }
+  let maxV=10;series.forEach(se=>{for(let v=160;v>0;v--){if(se.h[v]>0){if(v>maxV)maxV=v;break;}}});
+  maxV=Math.min(85,maxV+3);
+  const labels=Array.from({length:maxV+1},(_,v)=>v);
+  const palette=[BLUE,ORANGE,'#1d8a4e','#8e44ad','#d23b2f','#0e7490','#b8860b','#5b21b6'];
+  const datasets=series.map((se,i)=>{
+    const total=se.h.reduce((a,b)=>a+b,0)||1;let cum=0;
+    const data=labels.map(v=>{cum+=se.h[v]||0;return +(cum/total*100).toFixed(2);});
+    return {label:se.name,data,borderColor:palette[i%palette.length],backgroundColor:palette[i%palette.length],tension:.25,pointRadius:0,borderWidth:2.2,fill:false};
+  });
+  if(speedDistChart)speedDistChart.destroy();
+  speedDistChart=new Chart(document.getElementById('speedDistChart'),{type:'line',data:{labels,datasets},
+    options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+      plugins:{legend:{labels:{font:{size:11},boxWidth:16}},
+        tooltip:{callbacks:{label:c=>c.dataset.label+': '+c.parsed.y.toFixed(0)+'% ≤ '+c.label+' mph'}}},
+      scales:{x:{title:{display:true,text:'Speed (mph)'},ticks:{maxTicksLimit:18}},
+              y:{title:{display:true,text:'Cumulative % ≤ speed'},min:0,max:100,ticks:{callback:v=>v+'%'}}}},
+    plugins:[speedDist85Plugin]});
+}
+function renderSpeed(){ renderSpeedChart(); renderSpeedDist(); renderSpeedPeriod(); renderSpeedTable(); }
 function histQuantile(h,total,q){
   if(!total)return NaN;
   // type-7 (interpolated) quantile over an integer-binned histogram, so segment
@@ -1689,6 +1778,7 @@ function downloadCorrSpeeds(){
 state.msSel=state.msSel||{};
 const MS_ONCHANGE={                              // selection live-drives the Explore charts
   drillPick:()=>drawDrilldown(),
+  speedPick:()=>renderSpeed(),
   cmpPick:()=>{ const out=document.getElementById('cmpOut'); if(out&&out.querySelector('table'))runCompare(); }
 };
 
@@ -2279,6 +2369,29 @@ function generateSpeedReport(){
     catch(e){console.error(e);toast('Report error: '+e.message);}
   },50);
 }
+function speedPeriodConfigPdf(dirs){
+  return {type:'bar',
+    data:{labels:dirs.map(d=>d.label),datasets:[
+      {label:'AM median',data:dirs.map(d=>d.am50),backgroundColor:'rgba(29,63,148,.85)'},
+      {label:'Mid-day median',data:dirs.map(d=>d.md50),backgroundColor:'rgba(154,166,189,.95)'},
+      {label:'PM median',data:dirs.map(d=>d.pm50),backgroundColor:'rgba(242,104,34,.9)'}]},
+    options:{indexAxis:'y',maintainAspectRatio:false,
+      plugins:{legend:{labels:{usePointStyle:true,font:{size:12}}}},
+      scales:{x:{title:{display:true,text:'Median speed (mph)'},beginAtZero:false,ticks:{font:{size:11}}},
+              y:{ticks:{font:{size:11},autoSkip:false}}}}};
+}
+function speedDistConfigPdf(){
+  const sels=state.systems.filter(s=>s.hasData);
+  const h=new Float64Array(161); sels.forEach(s=>{const ch=corridorSpeedHist(s);for(let v=0;v<161;v++)h[v]+=ch[v];});
+  let maxV=10; for(let v=160;v>0;v--){if(h[v]>0){maxV=v;break;}} maxV=Math.min(85,maxV+3);
+  const labels=Array.from({length:maxV+1},(_,v)=>v);
+  const total=h.reduce((a,b)=>a+b,0)||1; let cum=0;
+  const data=labels.map(v=>{cum+=h[v]||0;return +(cum/total*100).toFixed(2);});
+  return {type:'line',data:{labels,datasets:[{label:'All corridors',data,borderColor:BLUE,backgroundColor:BLUE,tension:.25,pointRadius:0,borderWidth:2.4,fill:false}]},
+    options:{maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{title:{display:true,text:'Speed (mph)'}},y:{title:{display:true,text:'Cumulative % ≤ speed'},min:0,max:100,ticks:{callback:v=>v+'%'}}}},
+    plugins:[speedDist85Plugin]};
+}
 function buildSpeedPDF(dirs){
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({unit:'pt',format:'letter'});
@@ -2342,6 +2455,26 @@ function buildSpeedPDF(dirs){
     doc.addImage(img,'PNG',ML,y,CW,drawH);
     y+=drawH+12;
   }
+
+  /* ---- operating-speed distribution ---- */
+  try{
+    sectionTitle('Operating-Speed Distribution (cumulative)');
+    para('Cumulative share of 15-minute probe readings at or below each speed, aggregated across all corridor segments. The dashed line marks the 85th-percentile operating speed.',9.5);
+    const img=chartToImg(speedDistConfigPdf(),720,300);const drawH=CW*300/720;
+    if(y+drawH>CB)newPage();doc.addImage(img,'PNG',ML,y,CW,drawH);y+=drawH+16;
+  }catch(e){console.error('speed distribution chart',e);}
+
+  /* ---- median speed by period ---- */
+  try{
+    sectionTitle('Median Speed by Period (AM / Mid-day / PM)');
+    para('Median operating speed in each analysis window — lower bars indicate greater peak-period congestion.',9.5);
+    const CH2=16;
+    for(let i=0;i<dirs.length;i+=CH2){
+      const part=dirs.slice(i,i+CH2);const hCss=96+part.length*30;
+      const img=chartToImg(speedPeriodConfigPdf(part),720,hCss);const drawH=CW*hCss/720;
+      if(y+drawH>CB)newPage();doc.addImage(img,'PNG',ML,y,CW,drawH);y+=drawH+12;
+    }
+  }catch(e){console.error('speed period chart',e);}
 
   /* ---- full percentile table ---- */
   newPage();
