@@ -460,7 +460,7 @@
         <div class="range-pair"><select id="nightStart"></select><span>to</span><select id="nightEnd"></select></div>
       </div>
       <div class="setting-card">
-        <label class="head">Min C-value filter <span class="q" title="Records with a c-value below this are skipped (blank c-values are kept). Leave at 0 to keep everything.">?</span></label>
+        <label class="head">Min C-value filter <span class="q" title="Records with a c-value below this are skipped; when a minimum is set, blank c-values are also dropped. Leave at 0 to keep everything.">?</span></label>
         <input type="number" id="minCval" value="0" min="0" max="100" step="5">
       </div>
       <div class="setting-card">
@@ -519,6 +519,7 @@
         <button class="btn-recalc" onclick="recalcScores()">↻ Recalculate scores</button>
         <span class="formula-chip">Score = NormDelay × NormIQR × √(AADT/1,000) × √T &nbsp;·&nbsp; identical to the OCRA sheet formula</span>
       </div>
+      <div id="ocraDefaultWarn" class="noprint" style="display:none;margin:0 0 12px;padding:9px 13px;border-radius:9px;background:#fdf6e3;border:1px solid #e3c766;color:#7a5d0a;font-size:13px;font-weight:600"></div>
       <div class="panel-tools noprint">
         <button class="tool-btn" onclick="downloadROC()"><span class="ti">📄</span> Input Data for ROC.csv</button>
         <button class="tool-btn" onclick="downloadNight()"><span class="ti">🌙</span> All Nights 25th % Night.csv</button>
@@ -826,14 +827,16 @@ const tsCache=new Map();
 function parseTs(s){
   let v=tsCache.get(s);
   if(v!==undefined)return v;
-  let dow=-1,hour=-1,dnum=0;
+  let dow=-1,hour=-1,dnum=0,minute=0;
   let m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{1,2}):(\d{2})/.exec(s);
-  if(m){const d=new Date(+m[3],+m[1]-1,+m[2]);dow=d.getDay();hour=+m[4];dnum=(+m[3])*10000+(+m[1])*100+(+m[2]);}
+  if(m){const d=new Date(+m[3],+m[1]-1,+m[2]);dow=d.getDay();hour=+m[4];minute=+m[5];dnum=(+m[3])*10000+(+m[1])*100+(+m[2]);}
   else{
     m=/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(s);
-    if(m){const d=new Date(+m[1],+m[2]-1,+m[3]);dow=d.getDay();hour=+m[4];dnum=(+m[1])*10000+(+m[2])*100+(+m[3]);}
+    if(m){const d=new Date(+m[1],+m[2]-1,+m[3]);dow=d.getDay();hour=+m[4];minute=+m[5];dnum=(+m[1])*10000+(+m[2])*100+(+m[3]);}
   }
-  v={dow,hour,d:dnum};
+  // sortable integer key for chronological min/max (string compare mis-sorts MM/DD/YYYY)
+  const key=hour>=0?dnum*1440+hour*60+minute:-1;
+  v={dow,hour,d:dnum,key};
   if(tsCache.size>200000)tsCache.clear();
   tsCache.set(s,v);
   return v;
@@ -881,10 +884,10 @@ function processData(){
   const seenXD=new Map();       // every xd_id present in File 1 -> row count
   const segData=new Set();      // corridor segments that contributed >=1 usable record
   const segSpeedHist=new Map(); // xd -> Uint32Array(161) speed histogram (matched segs only)
-  let tsMin=null,tsMax=null,dowKept=0;
+  let tsMin=null,tsMax=null,tsMinK=null,tsMaxK=null,dowKept=0;
 
   const totalBytes=state.file1.size;
-  let rows=0,matched=0,xdHits=0,headerChecked=false,headerProblem=null;
+  let rows=0,matched=0,xdHits=0,headerChecked=false,headerProblem=null,hasCval=false;
   const t0=performance.now();
 
   Papa.parse(state.file1,{
@@ -896,6 +899,7 @@ function processData(){
         const hasTT=f.includes('travel_time_minutes')||f.includes('travel_time_seconds');
         const hasXD=f.includes('xd_id')||f.includes('xd');
         const hasTS=f.includes('measurement_tstamp');
+        hasCval=f.includes('cvalue');
         if(!hasTT||!hasXD||!hasTS){
           headerProblem='File 1 is missing required column(s): '+
             [!hasXD?'xd_id':null,!hasTS?'measurement_tstamp':null,!hasTT?'travel_time_minutes / travel_time_seconds':null].filter(Boolean).join(', ')+
@@ -914,11 +918,13 @@ function processData(){
         let tt=parseFloat(r.travel_time_minutes);
         if(!isFinite(tt)){const sec=parseFloat(r.travel_time_seconds);if(isFinite(sec))tt=sec/60;}
         if(!isFinite(tt)||tt<=0)continue;
-        if(cfg.minC>0){const cv=parseFloat(r.cvalue);if(isFinite(cv)&&cv<cfg.minC)continue;}
+        if(cfg.minC>0&&hasCval){const cv=parseFloat(r.cvalue);if(!isFinite(cv)||cv<cfg.minC)continue;}
         const ts=r.measurement_tstamp;if(!ts)continue;
-        if(tsMin===null||ts<tsMin)tsMin=ts;
-        if(tsMax===null||ts>tsMax)tsMax=ts;          // full file range (pre-filter, for diagnostics)
-        const {dow,hour,d:dnum}=parseTs(ts);
+        const {dow,hour,d:dnum,key:tsK}=parseTs(ts);
+        if(tsK>=0){                                  // full file range (pre-filter, for diagnostics)
+          if(tsMinK===null||tsK<tsMinK){tsMinK=tsK;tsMin=ts;}
+          if(tsMaxK===null||tsK>tsMaxK){tsMaxK=tsK;tsMax=ts;}
+        }
         if(dnum<cfg.dFrom||dnum>cfg.dTo)continue;     // analysis date-range filter (inclusive)
         const mi=state.segMiles[key]||0;
         const refSpd=parseFloat(r.reference_speed);
@@ -1200,6 +1206,15 @@ function renderOCRA(){
   const ranked=state.systems.filter(s=>s.hasData);
   const noData=state.systems.filter(s=>!s.hasData);
   const maxScore=Math.max(...ranked.map(s=>s.score),0)||1;
+  // warn while AADT/T are still at placeholder defaults — the score depends on them
+  const warn=document.getElementById('ocraDefaultWarn');
+  if(warn){
+    const def=ranked.filter(s=>s.AADT===20000&&s.T===24.4).length;
+    if(def>0){
+      warn.style.display='';
+      warn.textContent=`⚠ ${def} corridor${def===1?'':'s'} still ${def===1?'uses':'use'} placeholder AADT (20,000) and years-since-retimed (24.4). Enter real values in the table and press Recalculate — until then the ranking reflects only measured delay and reliability.`;
+    }else{warn.style.display='none';}
+  }
   state.systems.forEach((s,i)=>{
     if(!s.hasData)return;
     const refTxt=s.dirs.map(d=>isFinite(d.refTT)?d.refTT.toFixed(2):'—').join(' / ');
@@ -1477,10 +1492,20 @@ function renderSpeedChart(){
 }
 function histQuantile(h,total,q){
   if(!total)return NaN;
-  const target=q*(total-1);
-  let cum=0;
-  for(let v=0;v<h.length;v++){cum+=h[v];if(cum>target)return v;}
-  return NaN;
+  // type-7 (interpolated) quantile over an integer-binned histogram, so segment
+  // speed percentiles match the interpolated quantile() used elsewhere.
+  const target=q*(total-1),lo=Math.floor(target),hi=Math.ceil(target);
+  let cum=0,vLo=NaN,vHi=NaN;
+  for(let v=0;v<h.length;v++){
+    if(!h[v])continue;
+    const last=cum+h[v]-1;
+    if(isNaN(vLo)&&lo<=last)vLo=v;
+    if(isNaN(vHi)&&hi<=last){vHi=v;break;}
+    cum+=h[v];
+  }
+  if(isNaN(vLo))return NaN;
+  if(isNaN(vHi))vHi=vLo;
+  return vLo+(vHi-vLo)*(target-lo);
 }
 function downloadSegSpeeds(){
   if(!state.segSpeedHist||!state.segSpeedHist.size){toast('No speed data available');return;}
