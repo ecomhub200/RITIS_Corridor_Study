@@ -96,7 +96,7 @@
   /* ===== APP SHELL (sidebar + topbar) ===== */
   body{display:grid;grid-template-columns:250px 1fr;grid-template-rows:60px 1fr;min-height:100vh}
   .sidebar{grid-row:1 / 3;background:linear-gradient(180deg,#0e1730,#0b1430);color:#cbd5ec;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;z-index:50}
-  .sb-brand{display:flex;align-items:center;gap:11px;padding:16px 16px 15px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .sb-brand{position:relative;display:flex;align-items:center;gap:11px;padding:16px 16px 15px;border-bottom:1px solid rgba(255,255,255,.08)}
   .sb-logo{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--blue) 28%,var(--orange));display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 4px 12px rgba(0,0,0,.32)}
   .sb-brand .bt b{font-size:15.5px;color:#fff;font-weight:800;letter-spacing:.2px;display:block;line-height:1.15}
   .sb-brand .bt span{font-size:9.5px;color:#8ea0c4;font-weight:700;text-transform:uppercase;letter-spacing:1.3px}
@@ -108,11 +108,81 @@
   .sb-item.locked{opacity:.38;cursor:not-allowed}
   .sb-item .sb-ico{font-size:16px;width:22px;text-align:center;flex:0 0 auto}
   .sb-foot{margin-top:auto;padding:13px 16px;font-size:10.5px;color:#647aa3;border-top:1px solid rgba(255,255,255,.08);line-height:1.5}
+  .sb-foot a{color:#8ea0c4;text-decoration:none}
+  .sb-foot a:hover{color:#fff;text-decoration:underline}
   .topbar{grid-column:2;grid-row:1;display:flex;align-items:center;gap:14px;padding:0 26px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:40}
   .topbar h2{font-size:16.5px;font-weight:800;color:var(--ink);margin:0}
   .topbar .tb-sub{color:var(--muted);font-size:12px;font-weight:600;border-left:1px solid var(--line);padding-left:14px}
   .topbar .tb-status{margin-left:auto;font-size:12px;font-weight:700;color:var(--green);background:var(--green-soft);padding:5px 12px;border-radius:20px}
   .topbar .tb-status.off{color:var(--blue);background:var(--blue-soft)}
+  .tb-help{margin-left:auto;display:inline-flex;align-items:center;gap:7px;font-family:inherit;font-size:13px;font-weight:700;
+    color:var(--blue);background:var(--blue-soft);border:1.5px solid transparent;padding:6px 14px;border-radius:20px;cursor:pointer;transition:.15s}
+  .tb-help:hover{background:var(--blue);color:#fff;box-shadow:0 3px 10px rgba(29,63,148,.28)}
+  .tb-help-ic{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:50%;
+    background:var(--blue);color:#fff;font-size:11px;font-weight:800;line-height:1}
+  .tb-help:hover .tb-help-ic{background:#fff;color:var(--blue)}
+  /* ===== Help Center ===== */
+  .help-overlay{position:fixed;inset:0;z-index:200;display:none;align-items:center;justify-content:center;
+    background:rgba(8,14,30,.55);backdrop-filter:blur(3px);padding:26px}
+  .help-overlay.open{display:flex;animation:helpFade .2s ease}
+  @keyframes helpFade{from{opacity:0}to{opacity:1}}
+  .help-modal{width:min(960px,100%);max-height:90vh;display:flex;flex-direction:column;background:#fff;border-radius:20px;
+    overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.4);animation:helpRise .25s cubic-bezier(.2,.8,.2,1)}
+  @keyframes helpRise{from{transform:translateY(18px) scale(.98);opacity:.6}to{transform:none;opacity:1}}
+  .help-head{display:flex;align-items:center;gap:14px;padding:20px 24px;color:#fff;
+    background:linear-gradient(120deg,#13245c,#1d3f94 55%,#e8743b)}
+  .help-logo{font-size:30px;line-height:1}
+  .help-head h2{margin:0;font-size:19px;font-weight:800}
+  .help-head p{margin:2px 0 0;font-size:12.5px;opacity:.85;font-weight:600}
+  .help-x{margin-left:auto;border:none;background:rgba(255,255,255,.15);color:#fff;width:34px;height:34px;border-radius:50%;
+    font-size:15px;cursor:pointer;transition:.15s}
+  .help-x:hover{background:rgba(255,255,255,.32);transform:rotate(90deg)}
+  .help-body{display:flex;min-height:0;flex:1}
+  .help-nav{flex:0 0 210px;background:#f3f6fc;border-right:1px solid var(--line);padding:14px 12px;overflow-y:auto}
+  .help-tab{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:none;background:none;
+    font-family:inherit;font-size:13.5px;font-weight:700;color:var(--muted);padding:11px 12px;border-radius:11px;cursor:pointer;margin-bottom:3px;transition:.12s}
+  .help-tab:hover{background:#e7eefb;color:var(--ink)}
+  .help-tab.active{background:var(--blue);color:#fff;box-shadow:0 4px 12px rgba(29,63,148,.28)}
+  .help-tab .ht-ic{font-size:17px}
+  .help-content{flex:1;overflow-y:auto;padding:26px 30px}
+  .help-panel{display:none;animation:helpFade .2s ease}
+  .help-panel.active{display:block}
+  .help-panel h3{margin:0 0 6px;font-size:18px;font-weight:800;color:var(--ink)}
+  .help-panel .hp-lede{margin:0 0 20px;color:var(--muted);font-size:13.5px;font-weight:600;line-height:1.55}
+  .help-panel h4{margin:22px 0 10px;font-size:14px;font-weight:800;color:var(--ink)}
+  .help-panel p{font-size:13.5px;color:#3a4660;line-height:1.65;margin:0 0 12px}
+  .help-steps{display:grid;gap:12px}
+  .help-step{display:flex;gap:14px;align-items:flex-start;padding:15px;border:1.5px solid var(--line);border-radius:14px;background:#fbfcfe}
+  .help-step .hs-num{flex:0 0 38px;height:38px;border-radius:11px;display:flex;align-items:center;justify-content:center;
+    font-size:18px;color:#fff;background:linear-gradient(135deg,var(--blue),var(--orange));box-shadow:0 4px 10px rgba(0,0,0,.18)}
+  .help-step>div>b{display:block;font-size:14px;color:var(--ink);margin-bottom:3px}
+  .help-step span b{color:var(--ink)}
+  .help-step span{font-size:12.8px;color:var(--muted);line-height:1.55}
+  .help-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:13px}
+  .help-card{padding:16px;border:1.5px solid var(--line);border-radius:14px;background:#fff;transition:.15s}
+  .help-card:hover{border-color:var(--blue);box-shadow:0 8px 22px rgba(29,63,148,.12);transform:translateY(-2px)}
+  .help-card .hc-ic{font-size:26px;margin-bottom:8px}
+  .help-card b{display:block;font-size:13.8px;color:var(--ink);margin-bottom:4px}
+  .help-card span{font-size:12.5px;color:var(--muted);line-height:1.55}
+  .ocra-formula{display:flex;flex-wrap:wrap;align-items:center;gap:9px;padding:18px;border-radius:14px;
+    background:linear-gradient(120deg,#eef3fc,#f7eee9);margin-bottom:8px}
+  .ocra-chip{display:flex;flex-direction:column;align-items:center;gap:3px;background:#fff;border:1.5px solid var(--line);
+    border-radius:11px;padding:9px 13px;min-width:86px}
+  .ocra-chip b{font-size:13px;color:var(--blue);font-weight:800}
+  .ocra-chip span{font-size:10.5px;color:var(--muted);text-align:center;font-weight:600}
+  .ocra-op{font-size:18px;font-weight:800;color:#94a3c4}
+  .help-legend{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 4px}
+  .help-legend i{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--ink);font-style:normal}
+  .help-legend i b{width:16px;height:16px;border-radius:4px;display:inline-block}
+  .help-acc{border:1.5px solid var(--line);border-radius:12px;margin-bottom:9px;overflow:hidden}
+  .help-acc summary{padding:13px 15px;font-size:13.5px;font-weight:700;color:var(--ink);cursor:pointer;list-style:none;display:flex;align-items:center;gap:9px}
+  .help-acc summary::-webkit-details-marker{display:none}
+  .help-acc summary::before{content:'＋';color:var(--blue);font-weight:800;font-size:15px}
+  .help-acc[open] summary::before{content:'－'}
+  .help-acc p{margin:0;padding:0 15px 14px;font-size:13px;color:#3a4660;line-height:1.6}
+  .help-tip{display:flex;gap:11px;padding:13px 15px;border-radius:12px;background:var(--blue-soft);border:1px solid #cfe0ff;margin-top:16px}
+  .help-tip .ht-em{font-size:18px}.help-tip div{font-size:12.8px;color:#23365f;line-height:1.55;font-weight:600}
+  @media(max-width:680px){.help-body{flex-direction:column}.help-nav{flex:none;display:flex;gap:6px;overflow-x:auto;border-right:none;border-bottom:1px solid var(--line)}.help-tab{white-space:nowrap;margin:0}}
   .sb-burger{display:none;border:none;background:none;font-size:20px;cursor:pointer;color:var(--ink)}
   main{grid-column:2;grid-row:2;padding:24px 28px 64px;max-width:1480px;overflow-x:hidden}
   .view{display:none} .view.active{display:block;animation:fadeUp .28s ease}
@@ -322,22 +392,31 @@
   /* map tab */
   .map-controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px}
   .map-cby{font-size:12.5px;font-weight:700;color:var(--muted);display:flex;align-items:center}
+  .map-base-right{margin-left:auto}
+  .map-row-break{flex-basis:100%;height:0}
   .map-legend{display:flex;gap:4px;flex-wrap:wrap;align-items:center;font-size:11.5px;font-weight:600;color:var(--ink)}
   .map-legend .lg-key{display:inline-flex;align-items:center;gap:5px;margin-right:6px}
   .map-legend .lg-sw{width:16px;height:10px;border-radius:2px;display:inline-block}
   #corridorMap{height:580px;border-radius:12px;border:1px solid var(--line);overflow:hidden;z-index:1}
   #corridorMap:fullscreen{height:100vh;border-radius:0}
+  .map-foot{display:flex;justify-content:flex-end;margin-top:10px}
+  .map-fs-exit{position:absolute;top:14px;right:14px;z-index:1200;display:none;
+    padding:9px 15px;border:none;border-radius:9px;background:rgba(15,23,42,.92);color:#fff;
+    font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.3)}
+  .map-fs-exit:hover{background:#0f172a}
+  #corridorMap:fullscreen .map-fs-exit{display:block}
   .map-sel{margin-left:6px;padding:5px 9px;border:1.5px solid var(--line);border-radius:8px;font-size:12.5px;font-weight:600;background:#fff;font-family:inherit;color:var(--ink)}
   .map-badge{background:#102a66;color:#fff;border:2px solid #fff;border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font:700 10px 'Segoe UI',sans-serif;box-shadow:0 1px 4px rgba(0,0,0,.45)}
   .map-arrow{font-size:14px;font-weight:900;line-height:1;color:#102a66;text-shadow:0 0 2px #fff,0 0 3px #fff,0 0 4px #fff}
   .leaflet-popup-content{font-family:'Segoe UI',system-ui,sans-serif;font-size:12.5px}
   .leaflet-popup-content b{color:var(--blue)}
   /* collapsible sidebar (desktop) */
-  .sb-collapse-btn{display:inline-flex;border:none;background:none;font-size:15px;cursor:pointer;color:var(--muted);padding:5px 9px;border-radius:8px;line-height:1}
-  .sb-collapse-btn:hover{background:var(--blue-soft);color:var(--blue)}
+  .sb-collapse-btn{position:absolute;top:11px;right:9px;display:inline-flex;border:none;background:none;font-size:14px;cursor:pointer;color:#8ea0c4;padding:4px 7px;border-radius:8px;line-height:1}
+  .sb-collapse-btn:hover{background:rgba(255,255,255,.1);color:#fff}
   body.sb-collapsed{grid-template-columns:62px 1fr}
-  body.sb-collapsed .sb-brand{justify-content:center;padding:16px 8px;gap:0}
+  body.sb-collapsed .sb-brand{flex-direction:column;justify-content:center;padding:14px 8px;gap:9px}
   body.sb-collapsed .sb-brand .bt{display:none}
+  body.sb-collapsed .sb-collapse-btn{position:static;transform:scaleX(-1)}
   body.sb-collapsed .sb-sec,body.sb-collapsed .sb-foot{display:none}
   body.sb-collapsed .sb-item{font-size:0;justify-content:center;gap:0;padding:11px 0}
   body.sb-collapsed .sb-item .sb-ico{font-size:18px}
@@ -426,6 +505,7 @@
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="13" width="4.2" height="8" rx="1.3" fill="#fff"/><rect x="9.9" y="8" width="4.2" height="13" rx="1.3" fill="#fff"/><rect x="16.8" y="3" width="4.2" height="18" rx="1.3" fill="#fff" opacity="0.85"/></svg>
     </div>
     <div class="bt"><b>Corridor Ranker</b><span>Signal Prioritization</span></div>
+    <button class="sb-collapse-btn" onclick="toggleSidebar()" aria-label="Collapse sidebar" title="Collapse / expand sidebar">⮜</button>
   </div>
   <nav class="sb-nav">
     <button class="sb-item active" data-nav="upload" onclick="setView('upload')"><span class="sb-ico">⬆️</span> Upload Data</button>
@@ -435,17 +515,117 @@
     <button class="sb-item locked" data-nav="map" onclick="setView('map')"><span class="sb-ico">🗺️</span> Map</button>
     <button class="sb-item locked" data-nav="reports" onclick="setView('reports')"><span class="sb-ico">📑</span> Reports</button>
   </nav>
-  <div class="sb-foot">Runs entirely in your browser.<br>No data leaves your computer.</div>
+  <div class="sb-foot">Developed by Murad Al Qurishee<br><a href="mailto:aicreatesai08@gmail.com">aicreatesai08@gmail.com</a></div>
 </aside>
 
 <!-- ================= TOPBAR ================= -->
 <header class="topbar">
   <button class="sb-burger" onclick="document.body.classList.toggle('sb-open')" aria-label="Menu">☰</button>
-  <button class="sb-collapse-btn" onclick="toggleSidebar()" aria-label="Collapse sidebar" title="Collapse / expand sidebar">⮜</button>
   <h2 id="tbTitle">Upload Data</h2>
   <span class="tb-sub" id="tbSub">Load your corridor + probe data</span>
-  <span class="tb-status off" id="tbStatus">No data loaded</span>
+  <button class="tb-help" onclick="openHelp()" aria-label="Open Help Center" title="Help Center">
+    <span class="tb-help-ic" aria-hidden="true">?</span> Help
+  </button>
 </header>
+
+<!-- ================= HELP CENTER ================= -->
+<div class="help-overlay noprint" id="helpOverlay" onclick="if(event.target===this)closeHelp()">
+  <div class="help-modal" role="dialog" aria-modal="true" aria-label="Help Center">
+    <div class="help-head">
+      <span class="help-logo" aria-hidden="true">🧭</span>
+      <div><h2>Help Center</h2><p>Everything you need to rank corridors with confidence</p></div>
+      <button class="help-x" onclick="closeHelp()" aria-label="Close help">✕</button>
+    </div>
+    <div class="help-body">
+      <nav class="help-nav" id="helpNav">
+        <button class="help-tab active" data-help="start"><span class="ht-ic">🚀</span> Getting started</button>
+        <button class="help-tab" data-help="score"><span class="ht-ic">🎯</span> How scoring works</button>
+        <button class="help-tab" data-help="views"><span class="ht-ic">🧭</span> The five views</button>
+        <button class="help-tab" data-help="reports"><span class="ht-ic">📑</span> Reports &amp; exports</button>
+        <button class="help-tab" data-help="data"><span class="ht-ic">📦</span> Data &amp; privacy</button>
+        <button class="help-tab" data-help="faq"><span class="ht-ic">💬</span> FAQ</button>
+      </nav>
+      <div class="help-content">
+
+        <section class="help-panel active" data-panel="start">
+          <h3>🚀 Getting started in 3 steps</h3>
+          <p class="hp-lede">Corridor Ranker turns INRIX probe travel-time data into a defensible, ranked list of which signalized corridors to retime first. Here's the whole workflow.</p>
+          <div class="help-steps">
+            <div class="help-step"><div class="hs-num">1</div><div><b>Load the data</b><span>On <b>Upload Data</b>, click <b>Load the latest data</b> to pull the data this site already prepared — or open the uploader to bring your own RITIS export. Then press <b>Process</b>.</span></div></div>
+            <div class="help-step"><div class="hs-num">2</div><div><b>Review the ranking</b><span>The app jumps to <b>Rankings</b> — a network snapshot up top, a score chart, and the full OCRA priority table. Enter real <b>AADT</b> and <b>years-since-retimed</b>, then <b>Recalculate</b> to replace the placeholders.</span></div></div>
+            <div class="help-step"><div class="hs-num">3</div><div><b>Explore &amp; report</b><span>Dig into a single corridor in <b>Explore</b>, see the whole county in <b>Map</b>, then build a print-ready PDF or CSV in <b>Reports</b>.</span></div></div>
+          </div>
+          <div class="help-tip"><span class="ht-em">💡</span><div>New here? Just press <b>Load the latest data</b> → <b>Process</b>. Every view unlocks automatically once data is processed.</div></div>
+        </section>
+
+        <section class="help-panel" data-panel="score">
+          <h3>🎯 How the priority score works</h3>
+          <p class="hp-lede">Each corridor gets an <b>OCRA combined score</b> — higher means retime sooner. It multiplies how bad delay is, how unreliable it is, how much traffic it carries, and how long since it was last retimed.</p>
+          <div class="ocra-formula">
+            <span class="ocra-chip"><b>Norm Delay</b><span>median delay per signal</span></span>
+            <span class="ocra-op">×</span>
+            <span class="ocra-chip"><b>Norm IQR</b><span>day-to-day swing per signal</span></span>
+            <span class="ocra-op">×</span>
+            <span class="ocra-chip"><b>√(AADT/1000)</b><span>traffic volume</span></span>
+            <span class="ocra-op">×</span>
+            <span class="ocra-chip"><b>√T</b><span>years since retimed</span></span>
+          </div>
+          <h4>Reading the colors</h4>
+          <p>Across the chart, map, and table, darker / hotter means a higher priority:</p>
+          <div class="help-legend">
+            <i><b style="background:#7f1d1d"></b> #1 — retime first</i>
+            <i><b style="background:#dc2626"></b> top tier</i>
+            <i><b style="background:#f97316"></b> mid tier</i>
+            <i><b style="background:#fbbf24"></b> lower tier</i>
+          </div>
+          <div class="help-tip"><span class="ht-em">⚠️</span><div><b>AADT</b> and <b>T</b> start as placeholders (20,000 &amp; 24.4). The OCRA table shows a yellow warning until you enter real values and press <b>Recalculate</b>.</div></div>
+        </section>
+
+        <section class="help-panel" data-panel="views">
+          <h3>🧭 The five views</h3>
+          <p class="hp-lede">Use the left sidebar to move between views. Everything past Upload unlocks once data is processed.</p>
+          <div class="help-cards">
+            <div class="help-card"><div class="hc-ic">⬆️</div><b>Upload Data</b><span>Load the prepared dataset or your own RITIS files, then Process.</span></div>
+            <div class="help-card"><div class="hc-ic">🏆</div><b>Rankings</b><span>Network KPIs, the combined-score chart, and the full OCRA priority table.</span></div>
+            <div class="help-card"><div class="hc-ic">🔍</div><b>Explore</b><span>One corridor at a time — speed profiles, percentiles, delay by time of day.</span></div>
+            <div class="help-card"><div class="hc-ic">🗺️</div><b>Map</b><span>Every corridor drawn from its XD segments, colored by the metric you pick.</span></div>
+            <div class="help-card"><div class="hc-ic">📑</div><b>Reports</b><span>Generate a print-ready PDF or download the data as CSV.</span></div>
+          </div>
+        </section>
+
+        <section class="help-panel" data-panel="reports">
+          <h3>📑 Reports &amp; exports</h3>
+          <p class="hp-lede">Turn the analysis into something you can hand to a decision-maker.</p>
+          <h4>Build a report</h4>
+          <p>On <b>Reports</b>, set the jurisdiction line, choose <b>entire jurisdiction</b> or hand-pick <b>selected corridors</b>, then <b>Generate PDF report</b>. Each selected corridor includes its speed profile with percentile breakdown and graphics.</p>
+          <h4>Raw data</h4>
+          <p><b>Download data (CSV)</b> gives you the underlying numbers for your own spreadsheets. Exports are also available from Explore for ROC, night-time, and speed tables.</p>
+          <div class="help-tip"><span class="ht-em">🖨️</span><div>The PDF is generated entirely in your browser — nothing is uploaded to make it.</div></div>
+        </section>
+
+        <section class="help-panel" data-panel="data">
+          <h3>📦 Where the data comes from</h3>
+          <p class="hp-lede">The tool ranks <b>32 corridors</b> across Henrico County, VA, built from <b>619 INRIX XD probe segments</b>.</p>
+          <h4>Source &amp; freshness</h4>
+          <p>Travel-time readings come from <b>INRIX XD probe data via RITIS</b>, in 15-minute intervals. The reference (free-flow) speed for each segment is the 25th percentile of its night-time travel times. The freshness line on the Upload page shows the exact window loaded.</p>
+          <h4>Your privacy</h4>
+          <p>Everything runs <b>entirely in your browser</b>. The files are read locally and decompressed on your machine — no data ever leaves your computer, and there is no server doing the math.</p>
+        </section>
+
+        <section class="help-panel" data-panel="faq">
+          <h3>💬 Frequently asked</h3>
+          <details class="help-acc"><summary>Why do the analysis views look locked?</summary><p>They unlock as soon as you load and <b>Process</b> data. Until then only Upload Data is active.</p></details>
+          <details class="help-acc"><summary>Why is the OCRA table showing a yellow warning?</summary><p>Because AADT and years-since-retimed are still placeholders. Enter the real values in the inputs and press <b>Recalculate</b> to clear it.</p></details>
+          <details class="help-acc"><summary>What does "delay per signal" mean?</summary><p>The median extra travel time over free-flow, pooled across both directions and divided by the corridor's signal count — so corridors of different sizes compare fairly.</p></details>
+          <details class="help-acc"><summary>Why are there two directions per road?</summary><p>Each road is analyzed eastbound/westbound (or north/south) separately, since congestion is often directional. Network totals de-duplicate signals and miles so a road isn't counted twice.</p></details>
+          <details class="help-acc"><summary>How do I refresh the data?</summary><p>Re-run the prepared dataset, or upload a newer RITIS Massive Data Downloader export (INRIX XD, 15-min, with travel time) plus the XD identification file on the Upload page.</p></details>
+          <div class="help-tip"><span class="ht-em">✉️</span><div>Still stuck? Reach the developer at <b>aicreatesai08@gmail.com</b>.</div></div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+</div>
 
 <main>
 <div class="print-header">
@@ -671,21 +851,22 @@
             <option value="primary">Higher-priority per road</option>
           </select>
         </label>
-        <label class="map-cby">Basemap
+        <label class="map-cby map-base-right">Basemap
           <select id="mapBase" class="map-sel" onchange="setBasemap(this.value)">
             <option value="street">Street</option>
-            <option value="light">Clean grey</option>
+            <option value="light" selected>Clean grey</option>
             <option value="sat">Satellite</option>
           </select>
         </label>
+        <span class="map-row-break" aria-hidden="true"></span>
         <label class="map-cby">Find
           <select id="mapJump" class="map-sel" onchange="jumpToCorridor(this.value)"><option value="">— corridor —</option></select>
         </label>
         <button class="btn-sm" onclick="mapFit()">Fit all</button>
-        <button class="btn-sm" onclick="mapFullscreen()">⛶ Fullscreen</button>
       </div>
       <div id="mapLegend" class="map-legend" style="margin-bottom:10px"></div>
       <div id="corridorMap"></div>
+      <div class="map-foot noprint"><button class="btn-sm" onclick="mapFullscreen()">⛶ Fullscreen map</button></div>
       <div id="mapNote" class="note-box noprint" style="display:none"></div>
     </div>
   </div>
@@ -931,6 +1112,16 @@ function toggleSidebar(){
   try{localStorage.setItem('sb_collapsed',c?'1':'0');}catch(e){}
   setTimeout(()=>{ if(state.map&&document.querySelector('[data-view~="map"]:not(.hidden)'))state.map.invalidateSize(); },220);
 }
+/* ---------- Help Center ---------- */
+function openHelp(){ const o=document.getElementById('helpOverlay'); if(o)o.classList.add('open'); }
+function closeHelp(){ const o=document.getElementById('helpOverlay'); if(o)o.classList.remove('open'); }
+function switchHelp(name){
+  document.querySelectorAll('.help-tab').forEach(t=>t.classList.toggle('active',t.dataset.help===name));
+  document.querySelectorAll('.help-panel').forEach(s=>s.classList.toggle('active',s.dataset.panel===name));
+  const c=document.querySelector('.help-content'); if(c)c.scrollTop=0;
+}
+document.addEventListener('click',e=>{ const t=e.target.closest('.help-tab'); if(t)switchHelp(t.dataset.help); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape')closeHelp(); });
 
 /* ---------- hour selects & day pills ---------- */
 function hourOptions(sel,def){
@@ -1695,10 +1886,18 @@ function setBasemap(which){
 function mapFit(){if(state.map&&state.mapBounds&&state.mapBounds.length)state.map.fitBounds(state.mapBounds,{padding:[28,28]});}
 function mapFullscreen(){
   const el=document.getElementById('corridorMap');if(!el)return;
+  if(!document.getElementById('mapFsExit')){
+    const b=document.createElement('button');
+    b.id='mapFsExit';b.className='map-fs-exit';b.type='button';b.innerHTML='✕ Exit full view';
+    b.title='Return to the normal view (or press Esc)';
+    b.onclick=()=>{if(document.exitFullscreen)document.exitFullscreen();};
+    el.appendChild(b);
+  }
   if(document.fullscreenElement)document.exitFullscreen();
   else if(el.requestFullscreen)el.requestFullscreen();
   setTimeout(()=>{if(state.map)state.map.invalidateSize();},250);
 }
+document.addEventListener('fullscreenchange',()=>{ if(state.map)setTimeout(()=>state.map.invalidateSize(),200); });
 function jumpToCorridor(name){
   if(!name||!state.map)return;
   const b=state.corridorBounds&&state.corridorBounds[name];
