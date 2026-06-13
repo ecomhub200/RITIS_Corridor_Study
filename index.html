@@ -63,7 +63,38 @@
   .rail-step.done .rail-num{font-size:0}
   @media(max-width:860px){.rail-card{flex-direction:column}.rail-step{border-right:none;border-bottom:1px solid var(--line)}}
 
-  main{max-width:1280px;margin:0 auto;padding:26px 26px 80px}
+  /* ===== APP SHELL (sidebar + topbar) ===== */
+  body{display:grid;grid-template-columns:250px 1fr;grid-template-rows:60px 1fr;min-height:100vh}
+  .sidebar{grid-row:1 / 3;background:linear-gradient(180deg,#0e1730,#0b1430);color:#cbd5ec;display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow-y:auto;z-index:50}
+  .sb-brand{display:flex;align-items:center;gap:11px;padding:16px 16px 15px;border-bottom:1px solid rgba(255,255,255,.08)}
+  .sb-logo{width:40px;height:40px;border-radius:11px;background:linear-gradient(135deg,var(--blue) 28%,var(--orange));display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:0 4px 12px rgba(0,0,0,.32)}
+  .sb-brand .bt b{font-size:15.5px;color:#fff;font-weight:800;letter-spacing:.2px;display:block;line-height:1.15}
+  .sb-brand .bt span{font-size:9.5px;color:#8ea0c4;font-weight:700;text-transform:uppercase;letter-spacing:1.3px}
+  .sb-nav{padding:10px 9px;display:flex;flex-direction:column;gap:3px}
+  .sb-sec{font-size:10px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:#647aa3;padding:14px 12px 5px}
+  .sb-item{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:9px;cursor:pointer;color:#c3cee6;font-size:13.5px;font-weight:600;border:none;background:none;width:100%;text-align:left;transition:background .12s,color .12s;font-family:inherit}
+  .sb-item:hover{background:rgba(255,255,255,.06);color:#fff}
+  .sb-item.active{background:linear-gradient(90deg,rgba(29,63,148,.6),rgba(29,63,148,.12));color:#fff;box-shadow:inset 3px 0 0 var(--orange)}
+  .sb-item.locked{opacity:.38;cursor:not-allowed}
+  .sb-item .sb-ico{font-size:16px;width:22px;text-align:center;flex:0 0 auto}
+  .sb-foot{margin-top:auto;padding:13px 16px;font-size:10.5px;color:#647aa3;border-top:1px solid rgba(255,255,255,.08);line-height:1.5}
+  .topbar{grid-column:2;grid-row:1;display:flex;align-items:center;gap:14px;padding:0 26px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:40}
+  .topbar h2{font-size:16.5px;font-weight:800;color:var(--ink);margin:0}
+  .topbar .tb-sub{color:var(--muted);font-size:12px;font-weight:600;border-left:1px solid var(--line);padding-left:14px}
+  .topbar .tb-status{margin-left:auto;font-size:12px;font-weight:700;color:var(--green);background:var(--green-soft);padding:5px 12px;border-radius:20px}
+  .topbar .tb-status.off{color:var(--blue);background:var(--blue-soft)}
+  .sb-burger{display:none;border:none;background:none;font-size:20px;cursor:pointer;color:var(--ink)}
+  main{grid-column:2;grid-row:2;padding:24px 28px 64px;max-width:1480px;overflow-x:hidden}
+  .view{display:none} .view.active{display:block;animation:fadeUp .28s ease}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+  .hidden{display:none!important}
+  @media(max-width:900px){
+    body{grid-template-columns:1fr}
+    .sidebar{position:fixed;left:0;top:0;width:250px;transform:translateX(-100%);transition:transform .2s;box-shadow:0 0 40px rgba(0,0,0,.4)}
+    body.sb-open .sidebar{transform:none}
+    .topbar,main{grid-column:1}
+    .sb-burger{display:inline-flex}
+  }
 
   /* ============ SECTION CARDS ============ */
   .panel{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);margin-bottom:24px;overflow:hidden}
@@ -222,6 +253,37 @@
   .pick-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
   .btn-sm{background:#fff;border:1.5px solid var(--line);border-radius:8px;font-size:12px;font-weight:700;padding:6px 13px;cursor:pointer;color:var(--muted);transition:all .15s}
   .btn-sm:hover{border-color:var(--blue);color:var(--blue)}
+  /* filterable multi-select dropdown */
+  .ms{position:relative;margin:4px 0 14px;max-width:600px}
+  .ms-trigger{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:9px 13px;border:1.5px solid var(--line);border-radius:9px;background:#fff;font-size:13.5px;font-weight:600;color:var(--ink);cursor:pointer;text-align:left}
+  .ms-trigger:hover{border-color:var(--blue)}
+  .ms.open .ms-trigger{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}
+  .ms-trigger .ms-cap{color:var(--muted)} .ms-trigger.has .ms-cap{color:var(--blue);font-weight:700}
+  .ms-trigger .ms-car{color:var(--muted);transition:transform .15s} .ms.open .ms-trigger .ms-car{transform:rotate(180deg)}
+  .ms-panel{position:absolute;z-index:40;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1.5px solid var(--blue);border-radius:11px;box-shadow:var(--shadow-lift);overflow:hidden;display:none}
+  .ms.open .ms-panel{display:block}
+  .ms-search{width:100%;border:none;border-bottom:1px solid var(--line);padding:11px 14px;font-size:13px;font-family:inherit;outline:none}
+  .ms-actions{display:flex;gap:8px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid var(--line);background:#fafcff}
+  .ms-list{max-height:280px;overflow-y:auto;padding:4px}
+  .ms-row{display:flex;align-items:center;gap:9px;padding:7px 11px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink)}
+  .ms-row:hover{background:var(--blue-soft)}
+  .ms-row input{accent-color:var(--blue);margin:0}
+  .ms-row .ms-rank{color:var(--muted);font-weight:800;min-width:32px}
+  .ms-empty{padding:16px;text-align:center;color:var(--muted);font-size:12.5px}
+  .ms-foot{padding:7px 13px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);font-weight:700}
+  .ms-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+  .ms-chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:700;background:var(--blue-soft);border:1px solid var(--blue);color:var(--blue);border-radius:16px;padding:4px 6px 4px 12px}
+  .ms-chip button{border:none;background:rgba(29,63,148,.14);color:var(--blue);width:18px;height:18px;border-radius:50%;cursor:pointer;font-size:13px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
+  .ms-chip button:hover{background:var(--blue);color:#fff}
+  .ms.disabled{opacity:.5;pointer-events:none}
+  /* collapsible diagnostics details */
+  .diag-details{border:1px solid var(--line);border-radius:10px;margin-top:10px;background:#fafcff;overflow:hidden}
+  .diag-details>summary{list-style:none;cursor:pointer;padding:10px 14px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);display:flex;align-items:center;gap:8px}
+  .diag-details>summary::-webkit-details-marker{display:none}
+  .diag-details>summary::before{content:'▸';color:var(--blue);font-size:11px;transition:transform .15s}
+  .diag-details[open]>summary::before{transform:rotate(90deg)}
+  .diag-details>summary .dcount{margin-left:auto;font-weight:800;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:12px;padding:1px 10px}
+  .diag-details .pill-list,.diag-details .mini-table,.diag-details .note-box{margin:0 14px 14px}
   .rpt-field{display:flex;flex-direction:column;gap:5px;min-width:280px;flex:1}
   .rpt-field label{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
   .rpt-field input[type=text]{padding:9px 12px;border:1.5px solid var(--line);border-radius:9px;font-size:13.5px}
@@ -263,9 +325,10 @@
 
   /* ============ PRINT ============ */
   @media print{
-    .hero,.rail,#panelImport,#panelSettings,.dl-grid,.btn-recalc,#toast,.corr-select,details.method,.noprint{display:none!important}
-    body{background:#fff;font-size:12px}
-    main{max-width:none;padding:0}
+    .sidebar,.topbar,.sb-burger,.hero,.rail,#panelImport,#panelSettings,.dl-grid,.btn-recalc,#toast,.corr-select,.ms,details.method,.noprint{display:none!important}
+    body{background:#fff;font-size:12px;display:block}
+    main{max-width:none;padding:0;grid-column:1}
+    .view{display:block!important}
     .panel,.kpi{box-shadow:none;break-inside:avoid;page-break-inside:avoid}
     .table-scroll{max-height:none;overflow:visible;border:none}
     .chart-box{height:330px}
@@ -279,32 +342,31 @@
 </head>
 <body>
 
-<!-- ================= HERO ================= -->
-<div class="hero">
-  <div class="hero-signals" aria-hidden="true">
-    <div class="siglamp"><i class="r on"></i><i class="y"></i><i class="g"></i></div>
-    <div class="siglamp"><i class="r"></i><i class="y on"></i><i class="g"></i></div>
-    <div class="siglamp"><i class="r"></i><i class="y"></i><i class="g on"></i></div>
+<!-- ================= SIDEBAR ================= -->
+<aside class="sidebar" id="sidebar">
+  <div class="sb-brand">
+    <div class="sb-logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="13" width="4.2" height="8" rx="1.3" fill="#fff"/><rect x="9.9" y="8" width="4.2" height="13" rx="1.3" fill="#fff"/><rect x="16.8" y="3" width="4.2" height="18" rx="1.3" fill="#fff" opacity="0.85"/></svg>
+    </div>
+    <div class="bt"><b>Corridor Ranker</b><span>Signal Prioritization</span></div>
   </div>
-  <div class="hero-inner">
-    <div class="hero-badge"><span class="dot"></span>Runs in your browser — no data uploaded</div>
-    <h1>Signal Prioritization <em>Studio</em></h1>
-    <p class="lede">Import three RITIS files, press Process, and get ranked corridors, charts, downloads, and a print-ready report.</p>
-  </div>
-  <div class="hero-road" aria-hidden="true">
-    <span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span><span class="dash"></span>
-  </div>
-</div>
+  <nav class="sb-nav">
+    <button class="sb-item active" data-nav="upload" onclick="setView('upload')"><span class="sb-ico">⬆️</span> Upload Data</button>
+    <div class="sb-sec">Analysis</div>
+    <button class="sb-item locked" data-nav="rankings" onclick="setView('rankings')"><span class="sb-ico">🏆</span> Rankings</button>
+    <button class="sb-item locked" data-nav="explore" onclick="setView('explore')"><span class="sb-ico">🔍</span> Explore</button>
+    <button class="sb-item locked" data-nav="reports" onclick="setView('reports')"><span class="sb-ico">📑</span> Reports &amp; Coverage</button>
+  </nav>
+  <div class="sb-foot">Runs entirely in your browser.<br>No data leaves your computer.</div>
+</aside>
 
-<!-- ================= STEP RAIL ================= -->
-<div class="rail">
-  <div class="rail-card">
-    <div class="rail-step active" id="rs1"><div class="rail-num">1</div><div class="rt"><b>Get data</b><span>Corridor list required</span></div></div>
-    <div class="rail-step" id="rs2"><div class="rail-num">2</div><div class="rt"><b>Settings</b><span>Defaults ready</span></div></div>
-    <div class="rail-step" id="rs3"><div class="rail-num">3</div><div class="rt"><b>Process</b><span>One click</span></div></div>
-    <div class="rail-step" id="rs4"><div class="rail-num">4</div><div class="rt"><b>Results</b><span>Charts &amp; downloads</span></div></div>
-  </div>
-</div>
+<!-- ================= TOPBAR ================= -->
+<header class="topbar">
+  <button class="sb-burger" onclick="document.body.classList.toggle('sb-open')" aria-label="Menu">☰</button>
+  <h2 id="tbTitle">Upload Data</h2>
+  <span class="tb-sub" id="tbSub">Load your corridor + probe data</span>
+  <span class="tb-status off" id="tbStatus">No data loaded</span>
+</header>
 
 <main>
 <div class="print-header">
@@ -313,7 +375,7 @@
 </div>
 
 <!-- ================= STEP 1 : GET YOUR DATA ================= -->
-<div class="panel" id="panelImport">
+<div class="panel" id="panelImport" data-view="upload">
   <div class="panel-head">
     <div class="panel-ico blue">📂</div>
     <div><h2>Step 1 — Get your data</h2><p>Pick Option A or Option B for the traffic data. The corridor list at the bottom is needed either way.</p></div>
@@ -432,7 +494,7 @@
 </div>
 
 <!-- ================= STEP 2 : SETTINGS ================= -->
-<div class="panel" id="panelSettings">
+<div class="panel" id="panelSettings" data-view="upload">
   <div class="panel-head">
     <div class="panel-ico orange">⚙️</div>
     <div><h2>Step 2 — Settings</h2><p>Defaults follow the VDOT workflow (Tue–Thu · AM, Mid-day, PM).</p></div>
@@ -497,10 +559,10 @@
 <div id="resultsArea">
 
   <!-- KPI cards -->
-  <div class="kpi-row reveal" id="kpiRow"></div>
+  <div class="kpi-row reveal" id="kpiRow" data-view="rankings"></div>
 
   <!-- Coverage diagnostics -->
-  <div class="panel reveal" id="diagPanel">
+  <div class="panel reveal" id="diagPanel" data-view="reports">
     <div class="panel-head">
       <div class="panel-ico orange">🩺</div>
       <div><h2>Data Coverage Diagnostics</h2><p>Does your RITIS download actually cover your corridor definitions?</p></div>
@@ -509,7 +571,7 @@
   </div>
 
   <!-- OCRA table -->
-  <div class="panel reveal">
+  <div class="panel reveal" data-view="rankings">
     <div class="panel-head">
       <div class="panel-ico blue">🗂️</div>
       <div><h2>Prioritization table (OCRA)</h2><p>Edit AADT and years-since-retimed, then Recalculate.</p></div>
@@ -549,7 +611,7 @@
   </div>
 
   <!-- Charts -->
-  <div class="panel chart-panel reveal">
+  <div class="panel chart-panel reveal" data-view="rankings">
     <div class="panel-head">
       <div class="panel-ico orange">📈</div>
       <div><h2>Combined Score by Corridor</h2><p>Sorted by combined score (gold = #1 priority); same scale as the OCRA sheet.</p></div>
@@ -557,7 +619,7 @@
     <div class="panel-body"><div class="chart-box tall"><canvas id="scoreChart"></canvas></div></div>
   </div>
 
-  <div class="panel chart-panel reveal">
+  <div class="panel chart-panel reveal" data-view="rankings">
     <div class="panel-head">
       <div class="panel-ico blue">⏱️</div>
       <div><h2>Average Delay per Intersection</h2><p>Seconds per signal in the AM / Mid-day / PM windows.</p></div>
@@ -565,7 +627,23 @@
     <div class="panel-body"><div class="chart-box"><canvas id="delayChart"></canvas></div></div>
   </div>
 
-  <div class="panel chart-panel reveal">
+  <!-- Explore selector (drives all explore charts) -->
+  <div class="panel reveal" data-view="explore" id="explorePanel">
+    <div class="panel-head">
+      <div class="panel-ico orange">🔍</div>
+      <div><h2>Choose corridors to explore</h2><p>Filter and pick one or more corridors — the hourly travel-time, speed, and comparison below update to match.</p></div>
+    </div>
+    <div class="panel-body">
+      <div class="ms" id="cmpPick"></div>
+      <div class="pick-actions" style="margin-top:2px">
+        <button class="btn-recalc" onclick="runCompare()">⚖ Compare selected</button>
+        <button class="tool-btn accent" onclick="generateComparePDF()"><span class="ti">📑</span> Comparison report (PDF)</button>
+        <button class="tool-btn" onclick="downloadCompareCSV()"><span class="ti">📥</span> Comparison data (CSV)</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel chart-panel reveal" data-view="explore">
     <div class="panel-head">
       <div class="panel-ico green">🔍</div>
       <div><h2>Hourly Travel Time by Direction</h2><p>Dashed lines mark the free-flow reference; the gap is delay.</p></div>
@@ -576,7 +654,7 @@
     </div>
   </div>
 
-  <div class="panel chart-panel reveal">
+  <div class="panel chart-panel reveal" data-view="rankings">
     <div class="panel-head">
       <div class="panel-ico orange">🎯</div>
       <div><h2>Delay vs. Reliability</h2><p>Each dot is one corridor. Farther right = more delay per signal. Higher up = bigger day-to-day swings. Corridors in the upper-right quadrant are the strongest retiming candidates.</p></div>
@@ -585,7 +663,7 @@
   </div>
 
   <!-- Speed analysis -->
-  <div class="panel reveal">
+  <div class="panel reveal" data-view="explore">
     <div class="panel-head">
       <div class="panel-ico blue">🚗</div>
       <div><h2>Speed Analysis — Percentiles by Corridor</h2><p>Space-mean speeds from probe data (selected days, all hours). 85th percentile highlighted.</p></div>
@@ -610,27 +688,19 @@
     </div>
   </div>
 
-  <!-- Compare corridors -->
-  <div class="panel reveal noprint">
+  <!-- Comparison output (selection lives in the Explore selector above) -->
+  <div class="panel reveal noprint" data-view="explore">
     <div class="panel-head">
       <div class="panel-ico orange">⚖️</div>
-      <div><h2>Compare Corridors</h2><p>Pick 2 or more corridors for a side-by-side comparison.</p></div>
+      <div><h2>Side-by-Side Comparison</h2><p>Metrics and charts for the corridors selected above.</p></div>
     </div>
     <div class="panel-body">
-      <div class="pick-actions">
-        <button class="btn-sm" onclick="pickAll('cmpPick',true)">Select all</button>
-        <button class="btn-sm" onclick="pickAll('cmpPick',false)">Clear</button>
-        <button class="btn-recalc" onclick="runCompare()">⚖ Compare selected</button>
-        <button class="tool-btn accent" onclick="generateComparePDF()"><span class="ti">📑</span> Comparison report (PDF)</button>
-        <button class="tool-btn" onclick="downloadCompareCSV()"><span class="ti">📥</span> Comparison data (CSV)</button>
-      </div>
-      <div class="pick-grid" id="cmpPick"></div>
-      <div id="cmpOut"></div>
+      <div id="cmpOut"><p class="ms-empty" style="text-align:left;padding:6px 2px">Select corridors above, then press <b>“Compare selected”</b>.</p></div>
     </div>
   </div>
 
   <!-- Report builder -->
-  <div class="panel reveal noprint">
+  <div class="panel reveal noprint" data-view="reports">
     <div class="panel-head">
       <div class="panel-ico green">📑</div>
       <div><h2>Report Builder</h2><p>Generate a professional PDF report (with companion CSV) — single corridor, a selection, or the entire jurisdiction.</p></div>
@@ -647,14 +717,10 @@
         </div>
       </div>
       <div class="radio-row" style="margin-bottom:10px">
-        <label><input type="radio" name="rptScope" value="all" checked> Entire jurisdiction (all corridors with data)</label>
-        <label><input type="radio" name="rptScope" value="sel"> Selected corridors only</label>
+        <label><input type="radio" name="rptScope" value="all" checked onchange="updateRptScope()"> Entire jurisdiction (all corridors with data)</label>
+        <label><input type="radio" name="rptScope" value="sel" onchange="updateRptScope()"> Selected corridors only</label>
       </div>
-      <div class="pick-actions">
-        <button class="btn-sm" onclick="pickAll('rptPick',true)">Select all</button>
-        <button class="btn-sm" onclick="pickAll('rptPick',false)">Clear</button>
-      </div>
-      <div class="pick-grid" id="rptPick"></div>
+      <div class="ms" id="rptPick"></div>
       <div class="pick-actions" style="margin-top:6px">
         <button class="btn-recalc" onclick="generateReport()">📑 Generate PDF report</button>
         <button class="tool-btn primary" onclick="downloadReportData()"><span class="ti">📥</span> Download data (CSV)</button>
@@ -697,16 +763,39 @@ function toast(msg){
 }
 
 /* ---------- step rail ---------- */
-function railState(){
-  const loaded=[state.file1,state.segMiles,state.corridors].filter(Boolean).length;
-  const rs1=document.getElementById('rs1'),rs2=document.getElementById('rs2'),
-        rs3=document.getElementById('rs3'),rs4=document.getElementById('rs4');
-  [rs1,rs2,rs3,rs4].forEach(r=>r.classList.remove('active','done'));
-  if(state.systems){rs1.classList.add('done');rs2.classList.add('done');rs3.classList.add('done');rs4.classList.add('active');}
-  else if(loaded===3){rs1.classList.add('done');rs2.classList.add('done');rs3.classList.add('active');}
-  else if(loaded>0){rs1.classList.add('active');}
-  else rs1.classList.add('active');
+/* ---------- sidebar navigation ---------- */
+const VIEW_META={
+  upload:['Upload Data','Load your corridor + probe data, set the window, and process'],
+  rankings:['Rankings','Prioritized corridors by OCRA score'],
+  explore:['Explore Corridors','Hourly travel time, delay & speed — driven by your selection'],
+  reports:['Reports & Coverage','Build a PDF / CSV report and check data coverage']
+};
+function setView(name){
+  if(name!=='upload' && !state.systems)name='upload';          // result views locked until processed
+  document.querySelectorAll('[data-view]').forEach(el=>{
+    el.classList.toggle('hidden', !el.dataset.view.split(' ').includes(name));
+  });
+  document.querySelectorAll('.sb-item[data-nav]').forEach(b=>b.classList.toggle('active', b.dataset.nav===name));
+  const m=VIEW_META[name]||['',''];
+  const t=document.getElementById('tbTitle'),s=document.getElementById('tbSub');
+  if(t)t.textContent=m[0]; if(s)s.textContent=m[1];
+  document.body.classList.remove('sb-open');
+  window.scrollTo(0,0);
+  if(name==='explore'){ buildPicker('cmpPick'); syncExplore(); }
+  if(name==='reports'){ buildPicker('rptPick'); updateRptScope(); }
 }
+// reflect data-loaded state in the sidebar + topbar status
+function railState(){
+  const ready=!!state.systems;
+  document.querySelectorAll('.sb-item[data-nav]').forEach(b=>{
+    if(b.dataset.nav!=='upload')b.classList.toggle('locked', !ready);
+  });
+  const st=document.getElementById('tbStatus');
+  if(st){ st.textContent=ready?'Data loaded':'No data loaded'; st.classList.toggle('off', !ready); }
+}
+// close any open multi-select when clicking outside / pressing Esc
+document.addEventListener('click',e=>{ document.querySelectorAll('.ms.open').forEach(m=>{ if(!m.contains(e.target))m.classList.remove('open'); }); });
+document.addEventListener('keydown',e=>{ if(e.key==='Escape')document.querySelectorAll('.ms.open').forEach(m=>m.classList.remove('open')); });
 
 /* ---------- hour selects & day pills ---------- */
 function hourOptions(sel,def){
@@ -1144,9 +1233,10 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
   buildPicker('cmpPick');buildPicker('rptPick');
   buildDrillSelect();
   drawDrilldown();
-  railState();
+  updateRptScope();
+  railState();                       // unlock the sidebar's result views
+  setView('rankings');               // jump straight to the prioritized list
   toast('Processing complete');
-  document.getElementById('resultsArea').scrollIntoView({behavior:'smooth'});
 }
 
 /* ---------- KPI cards ---------- */
@@ -1403,24 +1493,24 @@ function renderDiagnostics(){
   </div>`;
 
   if(none.length){
-    html+=`<div class="diag-sub">No probe data — these corridors are NOT in the RITIS download</div><div class="pill-list">`+
-      none.map(x=>`<span class="cpill bad">${esc(x.name)} (0/${x.tot} segs)</span>`).join('')+`</div>`;
+    html+=`<details class="diag-details" open><summary>No probe data — corridors NOT in the download<span class="dcount">${none.length}</span></summary><div class="pill-list">`+
+      none.map(x=>`<span class="cpill bad">${esc(x.name)} (0/${x.tot} segs)</span>`).join('')+`</div></details>`;
   }
   if(partial.length){
-    html+=`<div class="diag-sub">Partial coverage — some segments missing from the download</div><div class="pill-list">`+
-      partial.map(x=>`<span class="cpill warn">${esc(x.name)} (${x.got}/${x.tot} segs)</span>`).join('')+`</div>`;
+    html+=`<details class="diag-details" open><summary>Partial coverage — some segments missing<span class="dcount">${partial.length}</span></summary><div class="pill-list">`+
+      partial.map(x=>`<span class="cpill warn">${esc(x.name)} (${x.got}/${x.tot} segs)</span>`).join('')+`</div></details>`;
   }
   if(full.length){
-    html+=`<div class="diag-sub">Full coverage</div><div class="pill-list">`+
-      full.map(x=>`<span class="cpill ok">${esc(x.name)}</span>`).join('')+`</div>`;
+    html+=`<details class="diag-details"><summary>Full coverage<span class="dcount">${full.length}</span></summary><div class="pill-list">`+
+      full.map(x=>`<span class="cpill ok">${esc(x.name)}</span>`).join('')+`</div></details>`;
   }
   if(cov.unmatchedRoads.size){
     const rows=[...cov.unmatchedRoads.entries()].sort((a,b)=>b[1].rows-a[1].rows);
-    html+=`<div class="diag-sub">In the download, but not referenced by any corridor in File 3</div>
+    html+=`<details class="diag-details" open><summary>In the download, but not used by any corridor<span class="dcount">${cov.unmatchedRoads.size} road${cov.unmatchedRoads.size>1?'s':''}</span></summary>
       <table class="mini-table"><thead><tr><th>Road</th><th>Unused XD segments</th><th>Probe rows discarded</th></tr></thead><tbody>`+
       rows.map(([rd,u])=>`<tr><td class="name">${esc(rd)}</td><td>${u.xds}</td><td>${u.rows.toLocaleString()}</td></tr>`).join('')+
       `</tbody></table>
-      <div class="note-box">These records were read and discarded. If these roads should be ranked, add them to <b>3_Corridor_Data.csv</b>. If the corridors flagged red above should be ranked, re-download from RITIS Massive Data Downloader with their XD segments included.</div>`;
+      <div class="note-box">These records were read and discarded. If these roads should be ranked, add them to <b>3_Corridor_Data.csv</b>. If the corridors flagged red above should be ranked, re-download from RITIS with their XD segments included.</div></details>`;
   }
   if(!none.length&&!cov.unmatchedRoads.size){
     html+=`<div class="note-box"><b>✓ Clean match:</b> every corridor has probe data and every downloaded segment is used.</div>`;
@@ -1536,25 +1626,102 @@ function downloadCorrSpeeds(){
 /* ============================================================
    CORRIDOR PICKERS (shared by Compare + Report Builder)
    ============================================================ */
-function buildPicker(id){
-  const box=document.getElementById(id);
-  const keep=new Set(pickedNames(id));            // preserve selections across rebuilds
+/* ---------- filterable multi-select dropdown (Explore + Report) ---------- */
+state.msSel=state.msSel||{};
+const MS_ONCHANGE={cmpPick:syncExplore};        // selection drives the Explore view
+
+function buildPicker(id){ buildMultiSelect(id); }   // back-compat render entry
+
+function msSys(){ return state.systems?state.systems.filter(s=>s.hasData):[]; }
+
+function buildMultiSelect(id){
+  const box=document.getElementById(id); if(!box)return;
+  const sys=msSys(), valid=new Set(sys.map(s=>s.name));
+  const sel=state.msSel[id]||(state.msSel[id]=new Set());
+  [...sel].forEach(n=>{ if(!valid.has(n))sel.delete(n); });   // drop stale picks
+  if(box._q===undefined)box._q='';
+  const wasOpen=box.classList.contains('open');
+  const q=box._q.trim().toLowerCase();
+  const shown=sys.filter(s=>!q||('#'+s.rank+' '+s.name).toLowerCase().includes(q));
+
   box.innerHTML='';
-  state.systems.filter(s=>s.hasData).forEach(s=>{
-    const lab=document.createElement('label');
-    lab.className='pick-chip'+(keep.has(s.name)?' checked':'');
-    lab.innerHTML=`<input type="checkbox" value="${esc(s.name)}"${keep.has(s.name)?' checked':''}> #${s.rank} ${esc(s.name)}`;
-    lab.querySelector('input').addEventListener('change',e=>lab.classList.toggle('checked',e.target.checked));
-    box.appendChild(lab);
+  const trig=document.createElement('button');
+  trig.type='button'; trig.className='ms-trigger'+(sel.size?' has':'');
+  trig.innerHTML=`<span class="ms-cap">${sel.size?sel.size+' corridor'+(sel.size>1?'s':'')+' selected':'Select corridors…'}</span><span class="ms-car">▾</span>`;
+  trig.onclick=e=>{ e.stopPropagation(); box.classList.toggle('open'); const s=box.querySelector('.ms-search'); if(box.classList.contains('open')&&s)s.focus(); };
+  box.appendChild(trig);
+
+  const panel=document.createElement('div'); panel.className='ms-panel'; panel.onclick=e=>e.stopPropagation();
+  const search=document.createElement('input');
+  search.className='ms-search'; search.type='text'; search.placeholder='🔍 Filter corridors by name…'; search.value=box._q;
+  search.oninput=()=>{ box._q=search.value; buildMultiSelect(id); box.classList.add('open'); const s=box.querySelector('.ms-search'); if(s){s.focus(); s.setSelectionRange(s.value.length,s.value.length);} };
+  panel.appendChild(search);
+  const acts=document.createElement('div'); acts.className='ms-actions';
+  const mkBtn=(t,fn)=>{ const b=document.createElement('button'); b.type='button'; b.className='btn-sm'; b.textContent=t; b.onclick=fn; return b; };
+  acts.appendChild(mkBtn('Select all',()=>pickAll(id,true)));
+  acts.appendChild(mkBtn('Select filtered',()=>{ shown.forEach(s=>sel.add(s.name)); afterMsChange(id,true); }));
+  acts.appendChild(mkBtn('Clear',()=>pickAll(id,false)));
+  panel.appendChild(acts);
+  const list=document.createElement('div'); list.className='ms-list';
+  if(!shown.length){ const e=document.createElement('div'); e.className='ms-empty'; e.textContent='No corridors match your filter.'; list.appendChild(e); }
+  else shown.forEach(s=>{
+    const row=document.createElement('label'); row.className='ms-row';
+    const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=sel.has(s.name);
+    cb.onchange=()=>{ cb.checked?sel.add(s.name):sel.delete(s.name); afterMsChange(id,false); };
+    const rk=document.createElement('span'); rk.className='ms-rank'; rk.textContent='#'+s.rank;
+    const nm=document.createElement('span'); nm.textContent=s.name;
+    row.append(cb,rk,nm); list.appendChild(row);
   });
+  panel.appendChild(list);
+  const foot=document.createElement('div'); foot.className='ms-foot'; foot.textContent=sel.size+' of '+sys.length+' selected';
+  panel.appendChild(foot);
+  box.appendChild(panel);
+
+  const chips=document.createElement('div'); chips.className='ms-chips';
+  [...sel].forEach(n=>{
+    const c=document.createElement('span'); c.className='ms-chip'; c.textContent=n;
+    const x=document.createElement('button'); x.type='button'; x.setAttribute('aria-label','remove'); x.textContent='×';
+    x.onclick=()=>{ sel.delete(n); afterMsChange(id,true); };
+    c.appendChild(x); chips.appendChild(c);
+  });
+  box.appendChild(chips);
+  if(wasOpen)box.classList.add('open');
+}
+// bulk=true → full rebuild (Select all/filtered/Clear/chip-remove); bulk=false → light summary update (single toggle keeps the list scroll)
+function afterMsChange(id,bulk){
+  const box=document.getElementById(id);
+  if(bulk){ buildMultiSelect(id); if(box)box.classList.add('open'); }
+  else{
+    const sel=state.msSel[id]||new Set(), n=msSys().length;
+    const cap=box.querySelector('.ms-cap'); if(cap)cap.textContent=sel.size?sel.size+' corridor'+(sel.size>1?'s':'')+' selected':'Select corridors…';
+    box.querySelector('.ms-trigger')&&box.querySelector('.ms-trigger').classList.toggle('has',!!sel.size);
+    const foot=box.querySelector('.ms-foot'); if(foot)foot.textContent=sel.size+' of '+n+' selected';
+    const chips=box.querySelector('.ms-chips');
+    if(chips){ chips.innerHTML=''; [...sel].forEach(nm=>{ const c=document.createElement('span'); c.className='ms-chip'; c.textContent=nm; const x=document.createElement('button'); x.type='button'; x.textContent='×'; x.onclick=()=>{ sel.delete(nm); afterMsChange(id,true); }; c.appendChild(x); chips.appendChild(c); }); }
+  }
+  if(MS_ONCHANGE[id])MS_ONCHANGE[id]();
 }
 function pickAll(id,on){
-  document.querySelectorAll('#'+id+' input').forEach(i=>{
-    i.checked=on;i.closest('.pick-chip').classList.toggle('checked',on);
-  });
+  const sel=state.msSel[id]||(state.msSel[id]=new Set());
+  sel.clear(); if(on)msSys().forEach(s=>sel.add(s.name));
+  afterMsChange(id,true);
 }
 function pickedNames(id){
-  return [...document.querySelectorAll('#'+id+' input:checked')].map(i=>i.value);
+  const valid=new Set(msSys().map(s=>s.name));
+  return [...(state.msSel[id]||[])].filter(n=>valid.has(n));
+}
+/* selecting corridors drives the Explore view's charts */
+function syncExplore(){
+  const names=pickedNames('cmpPick');
+  const dd=document.getElementById('corrSelect');
+  if(dd&&names.length&&[...dd.options].some(o=>o.value===names[0])){ dd.value=names[0]; drawDrilldown(); }
+  const out=document.getElementById('cmpOut');
+  if(out&&out.querySelector('table')&&names.length>=2)runCompare();   // live-refresh an existing comparison
+}
+function updateRptScope(){
+  const r=document.querySelector('input[name=rptScope]:checked');
+  const box=document.getElementById('rptPick');
+  if(box)box.classList.toggle('disabled', !r||r.value!=='sel');
 }
 
 /* ============================================================
@@ -2766,6 +2933,7 @@ if(location.protocol==='file:'){
 });
 
 railState();
+setView('upload');
 </script>
 </body>
 </html>
