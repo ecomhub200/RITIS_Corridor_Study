@@ -1542,23 +1542,28 @@ const quadrantPlugin={
     // soft tint on the priority quadrant
     ctx.fillStyle='rgba(242,104,34,.05)';
     ctx.fillRect(mx,ca.top,ca.right-mx,my-ca.top);
-    // quadrant captions on subtle pills so they stay legible over the dot cluster
+    // quadrant captions on opaque pills (crisp over the dot cluster)
     ctx.font='700 10px Segoe UI,sans-serif';
     const cap=(t,px,py,align,color)=>{
-      const w=ctx.measureText(t).width,padX=6;
+      const w=ctx.measureText(t).width,padX=7;
       const bx=align==='right'?px-w-padX:px-padX;
-      ctx.fillStyle='rgba(255,255,255,.8)';
-      if(ctx.roundRect){ctx.beginPath();ctx.roundRect(bx,py-11,w+padX*2,15,5);ctx.fill();}
-      else ctx.fillRect(bx,py-11,w+padX*2,15);
+      ctx.fillStyle='rgba(255,255,255,.94)';ctx.strokeStyle='rgba(120,134,160,.35)';ctx.lineWidth=1;
+      if(ctx.roundRect){ctx.beginPath();ctx.roundRect(bx,py-12,w+padX*2,16,6);ctx.fill();ctx.stroke();}
+      else {ctx.fillRect(bx,py-12,w+padX*2,16);ctx.strokeRect(bx,py-12,w+padX*2,16);}
       ctx.fillStyle=color;ctx.textAlign=align;ctx.textBaseline='alphabetic';ctx.fillText(t,px,py);
     };
     cap('SLOW & INCONSISTENT — RETIME FIRST',ca.right-10,ca.top+18,'right','#c0571a');
     cap('INCONSISTENT DAY TO DAY',ca.left+10,ca.top+18,'left','#7c8aa6');
     cap('CONSISTENTLY SLOW',ca.right-10,ca.bottom-9,'right','#7c8aa6');
     cap('PERFORMING WELL',ca.left+10,ca.bottom-9,'left','#1d8a4e');
-    // rank number centered in each dot — every corridor is identifiable; full name on hover
+    // rank inside each dot — but skip dots that overlap a neighbor so the clump stays
+    // readable as clean dots (hover shows every corridor); spread-out priority dots keep labels
+    const R=(chart.data.datasets[0].pointRadius)||8, near=(R*1.7)*(R*1.7), md=meta.data;
     ctx.font='700 9px Segoe UI,sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
-    meta.data.forEach((el,i)=>{ ctx.fillStyle='#fff'; ctx.fillText(String(pts[i].rank),el.x,el.y); });
+    md.forEach((el,i)=>{
+      for(let j=0;j<md.length;j++){if(j!==i){const dx=md[j].x-el.x,dy=md[j].y-el.y;if(dx*dx+dy*dy<near)return;}}
+      ctx.fillStyle='#fff';ctx.fillText(String(pts[i].rank),el.x,el.y);
+    });
     ctx.textBaseline='alphabetic';
     ctx.restore();
   }
