@@ -1486,7 +1486,8 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
       delays:allDelays,
       hourly:hourly.map(h=>h.n?h.s/h.n:null),
       spd:{n:spArr.length,mean:avg(spArr),
-        p15:quantile(spArr,0.15),p50:quantile(spArr,0.5),p85:quantile(spArr,0.85),p95:quantile(spArr,0.95),
+        p5:quantile(spArr,0.05),p15:quantile(spArr,0.15),p25:quantile(spArr,0.25),p50:quantile(spArr,0.5),
+        p75:quantile(spArr,0.75),p85:quantile(spArr,0.85),p95:quantile(spArr,0.95),
         am50:med(spPeriod.AM),md50:med(spPeriod.MD),pm50:med(spPeriod.PM)}
     });
   });
@@ -2779,6 +2780,36 @@ function buildReportPDF(sel,scope){
         d.spd&&d.spd.n?d.spd.mean.toFixed(1):'—',
         d.spd&&d.spd.n?d.spd.p50.toFixed(1):'—',
         d.spd&&d.spd.n?d.spd.p85.toFixed(1):'—']));
+
+    /* ---- speed percentile profile (table + graphic) ---- */
+    if(s.dirs.some(d=>d.spd&&d.spd.n)){
+      const pcts=[5,15,25,50,75,85,95],pkeys=['p5','p15','p25','p50','p75','p85','p95'];
+      const sp1=v=>isFinite(v)?v.toFixed(1):'—';
+      para('Speed percentile profile — the distribution of corridor space-mean speeds (mph) across all analyzed intervals. The 50th percentile is the typical operating speed; the gap between the 15th and 85th percentiles shows how much speeds vary, and AM / Mid-day / PM medians show when the corridor slows.',9.3,PDFC.muted);
+      table(
+        ['Direction','Obs','Mean','5th','15th','25th','Median','75th','85th','95th','AM','Mid','PM'],
+        s.dirs.map((d,k)=>{
+          const sp=d.spd||{};
+          return [d.bearing||('Dir '+(k+1)),
+            sp.n?sp.n.toLocaleString():'—',sp1(sp.mean),sp1(sp.p5),sp1(sp.p15),sp1(sp.p25),
+            sp1(sp.p50),sp1(sp.p75),sp1(sp.p85),sp1(sp.p95),sp1(sp.am50),sp1(sp.md50),sp1(sp.pm50)];
+        }),
+        {styles:{font:'helvetica',fontSize:7.6,cellPadding:3,textColor:PDFC.ink,lineColor:PDFC.line,lineWidth:0.4},
+         columnStyles:{0:{fontStyle:'bold',cellWidth:78},6:{fontStyle:'bold'},8:{textColor:PDFC.orange,fontStyle:'bold'}}});
+      const sdatasets=[];
+      s.dirs.forEach((d,i)=>{ if(!d.spd||!d.spd.n)return;
+        sdatasets.push({label:(d.bearing||('Dir '+(i+1)))+' — speed',data:pkeys.map(k=>d.spd[k]),
+          borderColor:palette[i%4],backgroundColor:palette[i%4],tension:.3,pointRadius:3,borderWidth:2.2,spanGaps:true});
+      });
+      if(sdatasets.length){
+        const simg=chartToImg({type:'line',data:{labels:pcts.map(p=>p+'th'),datasets:sdatasets},
+          options:{plugins:{legend:{labels:{font:{size:11}}}},
+            scales:{y:{title:{display:true,text:'Space-mean speed (mph)',font:{size:11}},ticks:{font:{size:10}}},
+                    x:{title:{display:true,text:'Percentile',font:{size:11}},ticks:{font:{size:10}}}}}},880,330);
+        captionedChart('Speed Percentile Profile',simg,CW,CW*330/880);
+      }
+    }
+
     const datasets=[];
     s.dirs.forEach((d,i)=>{
       datasets.push({label:(d.bearing||('Dir '+(i+1)))+' — avg travel time',data:d.hourly,
