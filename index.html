@@ -855,18 +855,18 @@
             <option value="primary">Higher-priority per road</option>
           </select>
         </label>
-        <label class="map-cby map-base-right">Basemap
-          <select id="mapBase" class="map-sel" onchange="setBasemap(this.value)">
-            <option value="street">Street</option>
-            <option value="light" selected>Clean grey</option>
-            <option value="sat">Satellite</option>
-          </select>
-        </label>
         <span class="map-row-break" aria-hidden="true"></span>
         <label class="map-cby">Find
           <select id="mapJump" class="map-sel" onchange="jumpToCorridor(this.value)"><option value="">— corridor —</option></select>
         </label>
         <button class="btn-sm" onclick="mapFit()">Fit all</button>
+        <label class="map-cby map-base-right">Basemap
+          <select id="mapBase" class="map-sel" onchange="setBasemap(this.value)">
+            <option value="street" selected>Street</option>
+            <option value="light">Clean grey</option>
+            <option value="sat">Satellite</option>
+          </select>
+        </label>
       </div>
       <div class="map-controls map-sig-controls noprint" id="sigControls" style="display:none">
         <span class="sig-title">🚦 Traffic signals</span>
