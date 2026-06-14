@@ -401,6 +401,15 @@
   .sig-title{font-weight:800;color:var(--ink);font-size:13px}
   .sig-count{margin-left:auto;font-size:12px;font-weight:700;color:var(--muted)}
   .sig-mark{filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
+  .sig-filters{display:inline-flex;align-items:center;gap:14px;flex-wrap:wrap}
+  .sig-toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+  .sig-toggle input{position:absolute;opacity:0;width:0;height:0}
+  .sig-track{position:relative;width:40px;height:22px;border-radius:22px;background:#cbd5e1;transition:background .2s;flex:0 0 auto}
+  .sig-thumb{position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .sig-toggle input:checked + .sig-track{background:#1d8a4e}
+  .sig-toggle input:checked + .sig-track .sig-thumb{transform:translateX(18px)}
+  .sig-toggle input:focus-visible + .sig-track{outline:2px solid var(--blue);outline-offset:2px}
+  .sig-toggle-lab{font-size:12.5px;font-weight:800;color:var(--ink);min-width:20px}
   #corridorMap{height:580px;border-radius:12px;border:1px solid var(--line);overflow:hidden;z-index:1}
   #corridorMap:fullscreen{height:100vh;border-radius:0}
   .map-foot{display:flex;justify-content:flex-end;margin-top:10px}
@@ -870,19 +879,20 @@
       </div>
       <div class="map-controls map-sig-controls noprint" id="sigControls" style="display:none">
         <span class="sig-title">🚦 Traffic signals</span>
-        <label class="map-cby">Show
-          <select id="mapSignals" class="map-sel" onchange="renderSignals()">
-            <option value="on">Shown</option>
-            <option value="off">Hidden</option>
-          </select>
+        <label class="sig-toggle" title="Show or hide traffic signals">
+          <input type="checkbox" id="mapSignals" checked onchange="renderSignals()">
+          <span class="sig-track"><span class="sig-thumb"></span></span>
+          <span class="sig-toggle-lab" id="sigToggleLab">On</span>
         </label>
-        <label class="map-cby">Corridor
-          <select id="mapSigCorr" class="map-sel" onchange="onSigCorrChange()" style="min-width:180px"><option value="">All corridors</option></select>
-        </label>
-        <label class="map-cby">Signal
-          <select id="mapSigPick" class="map-sel" onchange="onSigPick()" style="min-width:220px"><option value="">— all signals —</option></select>
-        </label>
-        <button class="btn-sm" id="sigReset" onclick="resetSignals()" title="Clear signal selection">Reset</button>
+        <span class="sig-filters" id="sigFilters">
+          <label class="map-cby">Corridor
+            <select id="mapSigCorr" class="map-sel" onchange="onSigCorrChange()" style="min-width:180px"><option value="">All corridors</option></select>
+          </label>
+          <label class="map-cby">Signal
+            <select id="mapSigPick" class="map-sel" onchange="onSigPick()" style="min-width:220px"><option value="">— all signals —</option></select>
+          </label>
+          <button class="btn-sm" id="sigReset" onclick="resetSignals()" title="Clear signal selection">Reset</button>
+        </span>
         <span class="sig-count" id="sigCount"></span>
       </div>
       <div id="mapLegend" class="map-legend" style="margin-bottom:10px"></div>
@@ -2005,17 +2015,27 @@ function renderMap(){
   const allBounds=[];state.corridorBounds={};state.corridorMain={};
   const drawList=vals.map(o=>({o,cl:classOf(o)})).sort((a,b)=>a.cl-b.cl);   // low priority first → high drawn on top
   drawList.forEach(({o,cl})=>{
-    const s=o.s,color=MAP_RAMP[cl],weight=4+cl,layers=[],lines=[],cbounds=[];
+    const s=o.s,color=MAP_RAMP[cl],weight=4+cl,layers=[],lines=[],cbounds=[],dirArrows=[];
     s.dirs.forEach(r=>{
       const corr=state.corridors&&state.corridors.find(c=>c.idx===r.idx);if(!corr)return;
+      const dirPts=[];
       corr.segs.forEach(xd=>{
         const g=state.segGeo&&state.segGeo[xd];if(!g)return;
         const pts=offsetRight(segLatLngs(xd,g),0.00016);    // ~18 m offset so EB/WB sit side-by-side
         layers.push(L.polyline(pts,{color:'#ffffff',weight:weight+3,opacity:.8}));
         const main=L.polyline(pts,{color,weight,opacity:.95});
         layers.push(main);lines.push(main);
-        pts.forEach(pp=>{allBounds.push(pp);cbounds.push(pp);});
+        pts.forEach(pp=>{allBounds.push(pp);cbounds.push(pp);dirPts.push(pp);});
       });
+      if(dirPts.length>1){                                   // arrows per direction, oriented by its own travel
+        const fracs=dirPts.length<6?[0.6]:[0.33,0.7];        // stagger so opposing offset lines don't overlap
+        fracs.forEach(f=>{
+          const ai=Math.min(dirPts.length-1,Math.max(1,Math.round(dirPts.length*f)));
+          const p0=dirPts[ai-1],p1=dirPts[ai];
+          const ang=Math.atan2(-(p1[0]-p0[0]),(p1[1]-p0[1]))*180/Math.PI;
+          dirArrows.push({p:p1,ang});
+        });
+      }
     });
     if(!layers.length)return;
     const grp=(byRoad[roadOf(s.name)]||[s]).slice().sort((a,b)=>a.rank-b.rank);
@@ -2034,9 +2054,9 @@ function renderMap(){
     if(cbounds.length>1){
       const mid=cbounds[Math.floor(cbounds.length*0.5)];
       L.marker(mid,{icon:L.divIcon({className:'',html:'<div class="map-badge">'+s.rank+'</div>',iconSize:[22,22],iconAnchor:[11,11]}),title:'#'+s.rank+' '+s.name}).addTo(state.labelLayer).on('click',()=>{const m=state.corridorMain[s.name];if(m)m.openPopup();});
-      const ai=Math.min(cbounds.length-1,Math.floor(cbounds.length*0.72)),p0=cbounds[Math.max(0,ai-1)],p1=cbounds[ai];
-      const ang=Math.atan2(-(p1[0]-p0[0]),(p1[1]-p0[1]))*180/Math.PI;
-      L.marker(p1,{icon:L.divIcon({className:'',html:'<div class="map-arrow" style="transform:rotate('+ang.toFixed(0)+'deg)">➤</div>',iconSize:[18,18],iconAnchor:[9,9]}),interactive:false}).addTo(state.labelLayer);
+      (dirArrows.length?dirArrows:[]).forEach(a=>{
+        L.marker(a.p,{icon:L.divIcon({className:'',html:'<div class="map-arrow" style="transform:rotate('+a.ang.toFixed(0)+'deg)">➤</div>',iconSize:[18,18],iconAnchor:[9,9]}),interactive:false}).addTo(state.labelLayer);
+      });
     }
   });
   state.mapBounds=allBounds;
@@ -2137,7 +2157,10 @@ function renderSignals(){
   if(!state.signalLayer)state.signalLayer=L.layerGroup().addTo(state.map);
   state.signalLayer.clearLayers();
   state.sigMarks={};
-  const show=((document.getElementById('mapSignals')||{}).value||'on')!=='off';
+  const tog=document.getElementById('mapSignals');
+  const show=tog?tog.checked:true;
+  const lab=document.getElementById('sigToggleLab'); if(lab)lab.textContent=show?'On':'Off';
+  const filters=document.getElementById('sigFilters'); if(filters)filters.style.display=show?'inline-flex':'none';
   if(!show){ if(cnt)cnt.textContent=''; return; }
   const corr=(document.getElementById('mapSigCorr')||{}).value||'';
   const pick=(document.getElementById('mapSigPick')||{}).value||'';
