@@ -1938,10 +1938,15 @@ function jumpToCorridor(name){
   if(m&&m.openPopup)setTimeout(()=>m.openPopup(),350);
 }
 function mapToExplore(name){
+  state.msSel=state.msSel||{};
   state.msSel['drillPick']=new Set([name]);
   if(!state.msSel['cmpPick'])state.msSel['cmpPick']=new Set();
   state.msSel['cmpPick'].add(name);
-  setView('explore');
+  // Close the popup and defer the view switch out of Leaflet's click handler.
+  // Switching views (which hides the map and builds Chart.js canvases) synchronously
+  // from inside an open Leaflet popup can wedge the map/event state and freeze the page.
+  try{ if(state.map&&state.map.closePopup)state.map.closePopup(); }catch(e){}
+  setTimeout(()=>{ try{ setView('explore'); }catch(e){ console.error(e); } }, 0);
 }
 function buildMapJump(systems){
   const sel=document.getElementById('mapJump');if(!sel)return;
@@ -1997,6 +2002,7 @@ function renderMap(){
     state.labelLayer=L.layerGroup().addTo(state.map);
     setBasemap((document.getElementById('mapBase')||{}).value||'street');
   }
+  try{ if(state.map.closePopup)state.map.closePopup(); }catch(e){}   // drop any orphaned popup before redraw
   state.mapLayer.clearLayers();state.labelLayer.clearLayers();
   let sys=state.systems.filter(s=>s.hasData);
   if(topN>0)sys=sys.slice().sort((a,b)=>a.rank-b.rank).slice(0,topN);
