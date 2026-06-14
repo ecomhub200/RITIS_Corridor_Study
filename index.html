@@ -400,10 +400,6 @@
   .map-sig-controls{margin-top:-2px;padding-top:11px;border-top:1px dashed var(--line);gap:14px}
   .sig-title{font-weight:800;color:var(--ink);font-size:13px}
   .sig-count{margin-left:auto;font-size:12px;font-weight:700;color:var(--muted)}
-  #mapSigLegend .lg-sw{border-radius:50%;width:12px;height:12px}
-  #mapSigLegend .lg-key{cursor:pointer;padding:2px 4px;border-radius:6px}
-  #mapSigLegend .lg-key:hover{background:var(--blue-soft)}
-  #mapSigLegend .lg-key.active{background:var(--blue-soft);font-weight:800}
   .sig-mark{filter:drop-shadow(0 1px 2px rgba(0,0,0,.35))}
   #corridorMap{height:580px;border-radius:12px;border:1px solid var(--line);overflow:hidden;z-index:1}
   #corridorMap:fullscreen{height:100vh;border-radius:0}
@@ -880,25 +876,16 @@
             <option value="off">Hidden</option>
           </select>
         </label>
-        <label class="map-cby">Color by
-          <select id="mapSigColor" class="map-sel" onchange="onSigColorChange()">
-            <option value="coord">Coordination corridor</option>
-            <option value="type">Signal type</option>
-            <option value="detect">Detection camera</option>
-            <option value="feature">Features (FYA / dual-left)</option>
-            <option value="ped">Pedestrian phase</option>
-          </select>
+        <label class="map-cby">Corridor
+          <select id="mapSigCorr" class="map-sel" onchange="onSigCorrChange()" style="min-width:180px"><option value="">All corridors</option></select>
         </label>
-        <label class="map-cby">Show only
-          <select id="mapSigFilter" class="map-sel" onchange="renderSignals()"><option value="">All</option></select>
+        <label class="map-cby">Signal
+          <select id="mapSigPick" class="map-sel" onchange="onSigPick()" style="min-width:220px"><option value="">— all signals —</option></select>
         </label>
-        <label class="map-cby">Find
-          <input type="text" id="mapSigSearch" class="map-sel" placeholder="signal or street…" oninput="renderSignals()" style="min-width:160px">
-        </label>
+        <button class="btn-sm" id="sigReset" onclick="resetSignals()" title="Clear signal selection">Reset</button>
         <span class="sig-count" id="sigCount"></span>
       </div>
       <div id="mapLegend" class="map-legend" style="margin-bottom:10px"></div>
-      <div id="mapSigLegend" class="map-legend" style="margin-bottom:10px;display:none"></div>
       <div id="corridorMap"></div>
       <div class="map-foot noprint"><button class="btn-sm" onclick="mapFullscreen()">⛶ Fullscreen map</button></div>
       <div id="mapNote" class="note-box noprint" style="display:none"></div>
@@ -2060,8 +2047,7 @@ function renderMap(){
 }
 
 /* ---------- traffic signals layer ---------- */
-const SIG_PAL=['#1d3f94','#f26822','#1d8a4e','#8e44ad','#0e9aa7','#d4a017','#c0392b','#2c82c9',
-  '#e67e22','#16a085','#9b59b6','#7f8c8d','#e74c3c','#27ae60','#2980b9','#f39c12','#8e6e53','#1abc9c'];
+const SIG_COLOR='#0e7c86', SIG_PICK='#f26822';     // uniform signal teal · selected accent
 function parseSignals(text){
   if(typeof Papa==='undefined')return [];
   const yes=v=>{v=String(v==null?'':v).trim().toLowerCase();return v!==''&&v!=='no'&&v!=='0'&&v!=='n'&&v!=='none';};
@@ -2086,93 +2072,88 @@ function parseSignals(text){
   });
   return out;
 }
-function sigCategory(s,mode){
-  if(mode==='type')return s.type||'Unknown';
-  if(mode==='detect')return s.hasCam?'Has detection camera':'No camera';
-  if(mode==='feature')return s.fya&&s.dualLeft?'FYA + dual-left':s.fya?'FYA':s.dualLeft?'Dual-left':'Standard';
-  if(mode==='ped')return s.walkPhase?'Pedestrian phase':'No ped phase';
-  return s.coordCorr||'Uncoordinated';        // coord
-}
-const SIG_TITLES={coord:'Coordination corridor',type:'Signal type',detect:'Detection camera',feature:'Features',ped:'Pedestrian phase'};
-function sigCatCounts(mode){
-  const counts={};(state.signals||[]).forEach(s=>{const c=sigCategory(s,mode);counts[c]=(counts[c]||0)+1;});
-  return counts;
-}
-function sigColorMap(mode,cats){
-  const map={};cats.forEach((c,i)=>map[c]=SIG_PAL[i%SIG_PAL.length]);
-  if(mode==='detect'){map['Has detection camera']='#1d8a4e';map['No camera']='#9aa6bd';}
-  if(mode==='ped'){map['Pedestrian phase']='#1d8a4e';map['No ped phase']='#9aa6bd';}
-  if(mode==='feature'){map['Standard']='#9aa6bd';if(map['FYA'])map['FYA']='#d4a017';if(map['Dual-left'])map['Dual-left']='#8e44ad';if(map['FYA + dual-left'])map['FYA + dual-left']='#c0392b';}
-  return map;
-}
-function buildSigFilter(mode){
-  const sel=document.getElementById('mapSigFilter');if(!sel||!state.signals)return;
-  const counts=sigCatCounts(mode);
-  const cats=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]||String(a).localeCompare(b));
-  const cur=sel.value;
-  sel.innerHTML='<option value="">All ('+state.signals.length+')</option>'+
-    cats.map(c=>`<option value="${esc(c)}">${esc(c)} (${counts[c]})</option>`).join('');
-  sel.value=cats.includes(cur)?cur:'';
-  sel.dataset.mode=mode;
-}
-function onSigColorChange(){ buildSigFilter((document.getElementById('mapSigColor')||{}).value||'coord'); renderSignals(); }
-function filterSig(c){ const sel=document.getElementById('mapSigFilter'); if(sel)sel.value=c; renderSignals(); }
-function buildSigLegend(mode,cats,counts,colorOf,only){
-  const legend=document.getElementById('mapSigLegend');if(!legend)return;
-  legend.style.display='flex';
-  let html='<span style="margin-right:6px;color:var(--muted);font-weight:800">🚦 '+(SIG_TITLES[mode]||'Signals')+'</span>';
-  cats.forEach(c=>{
-    html+=`<span class="lg-key${only===c?' active':''}" data-cat="${esc(c)}"><span class="lg-sw" style="background:${colorOf[c]||'#1d3f94'}"></span>${esc(c)} <span style="color:var(--muted)">(${counts[c]})</span></span>`;
-  });
-  if(only)html+='<span class="lg-key" data-cat="" style="color:var(--blue);font-weight:700">↺ show all</span>';
-  legend.innerHTML=html;
-  legend.querySelectorAll('.lg-key[data-cat]').forEach(el=>el.onclick=()=>filterSig(el.dataset.cat));
-}
 function sigPopup(s){
-  const badge=(t,c)=>`<span style="display:inline-block;background:${c};color:#fff;font-size:10px;font-weight:700;padding:1px 7px;border-radius:9px;margin:1px 3px 1px 0">${esc(t)}</span>`;
-  let b='';
-  if(s.fya)b+=badge('FYA','#d4a017');
-  if(s.dualLeft)b+=badge('Dual left','#8e44ad');
-  if(s.hasCam)b+=badge('📷 '+s.cams.join(', '),'#1d8a4e');
-  if(s.walkPhase)b+=badge('🚶 Ped','#2c82c9');
   const cross=(s.st1||s.st2)?`${esc(s.st1)}${s.st1&&s.st2?' & ':''}${esc(s.st2)}`:'';
-  return `<div style="min-width:190px"><b>${esc(s.name)}</b>`+
+  return `<div style="min-width:180px"><b>${esc(s.name)}</b>`+
     `<div style="color:#64748f;font-size:11px;margin:1px 0 5px">Signal #${esc(s.ino)} · ${esc(s.type)}${cross?(' · '+cross):''}</div>`+
-    (b?('<div style="margin-bottom:5px;line-height:1.7">'+b+'</div>'):'')+
     `<table style="font-size:11.5px;border-collapse:collapse">`+
     `<tr><td style="color:#64748f;padding-right:9px">Coordination</td><td>${esc(s.coordCorr)}${s.coordGroup?(' · group '+esc(s.coordGroup)):''}</td></tr>`+
-    (s.walkPhase?`<tr><td style="color:#64748f;padding-right:9px;vertical-align:top">Walk phase</td><td>${esc(s.walkPhase)}</td></tr>`:'')+
     `</table></div>`;
 }
+function sigCorrCounts(){
+  const c={};(state.signals||[]).forEach(s=>{c[s.coordCorr]=(c[s.coordCorr]||0)+1;});
+  return c;
+}
+function buildSigCorr(){
+  const sel=document.getElementById('mapSigCorr');if(!sel||!state.signals)return;
+  const counts=sigCorrCounts();
+  const cats=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]||String(a).localeCompare(b));
+  const cur=sel.value;
+  sel.innerHTML='<option value="">All corridors ('+state.signals.length+')</option>'+
+    cats.map(c=>`<option value="${esc(c)}">${esc(c)} (${counts[c]})</option>`).join('');
+  if(cats.includes(cur))sel.value=cur;
+}
+function buildSigPick(){
+  const sel=document.getElementById('mapSigPick');if(!sel||!state.signals)return;
+  const corr=(document.getElementById('mapSigCorr')||{}).value||'';
+  const list=(state.signals||[]).filter(s=>!corr||s.coordCorr===corr).slice().sort((a,b)=>a.name.localeCompare(b.name));
+  sel.innerHTML='<option value="">— all signals'+(corr?(' in '+esc(corr)):'')+' ('+list.length+') —</option>'+
+    list.map(s=>`<option value="${esc(s.ino)}">${esc(s.name)}</option>`).join('');
+}
+function onSigCorrChange(){
+  buildSigPick();
+  const ps=document.getElementById('mapSigPick');if(ps)ps.value='';
+  renderSignals();
+  const corr=(document.getElementById('mapSigCorr')||{}).value||'';
+  if(corr&&state.map){
+    const pts=(state.signals||[]).filter(s=>s.coordCorr===corr).map(s=>[s.lat,s.lng]);
+    if(pts.length>1)state.map.fitBounds(pts,{padding:[50,50],maxZoom:15});
+    else if(pts.length===1)state.map.setView(pts[0],15);
+  }
+}
+function onSigPick(){
+  renderSignals();
+  const ino=(document.getElementById('mapSigPick')||{}).value||'';
+  if(!ino)return;
+  const s=(state.signals||[]).find(x=>x.ino===ino);
+  const m=state.sigMarks&&state.sigMarks[ino];
+  if(s&&state.map)state.map.setView([s.lat,s.lng],16);
+  if(m)setTimeout(()=>m.openPopup(),260);
+}
+function resetSignals(){
+  const c=document.getElementById('mapSigCorr'),p=document.getElementById('mapSigPick');
+  if(c)c.value='';buildSigPick();if(p)p.value='';
+  renderSignals();
+  if(state.map&&state.mapBounds&&state.mapBounds.length)state.map.fitBounds(state.mapBounds,{padding:[28,28]});
+}
 function renderSignals(){
-  const ctrls=document.getElementById('sigControls'),legend=document.getElementById('mapSigLegend'),cnt=document.getElementById('sigCount');
+  const ctrls=document.getElementById('sigControls'),cnt=document.getElementById('sigCount');
   const sigs=state.signals||[];
   if(!state.map)return;
-  if(!sigs.length){ if(ctrls)ctrls.style.display='none'; if(legend)legend.style.display='none'; return; }
+  if(!sigs.length){ if(ctrls)ctrls.style.display='none'; return; }
   if(ctrls)ctrls.style.display='flex';
+  const corrSel=document.getElementById('mapSigCorr');
+  if(corrSel&&corrSel.options.length<=1){buildSigCorr();buildSigPick();}
   if(!state.signalLayer)state.signalLayer=L.layerGroup().addTo(state.map);
   state.signalLayer.clearLayers();
+  state.sigMarks={};
   const show=((document.getElementById('mapSignals')||{}).value||'on')!=='off';
-  if(!show){ if(legend)legend.style.display='none'; if(cnt)cnt.textContent=''; return; }
-  const mode=(document.getElementById('mapSigColor')||{}).value||'coord';
-  const fsel=document.getElementById('mapSigFilter');
-  if(fsel&&fsel.dataset.mode!==mode)buildSigFilter(mode);
-  const only=(fsel&&fsel.value)||'';
-  const q=((document.getElementById('mapSigSearch')||{}).value||'').trim().toLowerCase();
-  const counts=sigCatCounts(mode);
-  const cats=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]||String(a).localeCompare(b));
-  const colorOf=sigColorMap(mode,cats);
+  if(!show){ if(cnt)cnt.textContent=''; return; }
+  const corr=(document.getElementById('mapSigCorr')||{}).value||'';
+  const pick=(document.getElementById('mapSigPick')||{}).value||'';
   let shown=0;
   sigs.forEach(s=>{
-    const cat=sigCategory(s,mode);
-    if(only&&cat!==only)return;
-    if(q&&(s.name+' '+s.st1+' '+s.st2+' '+s.coordCorr).toLowerCase().indexOf(q)<0)return;
+    if(corr&&s.coordCorr!==corr)return;
+    const isPick=pick&&s.ino===pick;
     shown++;
-    L.circleMarker([s.lat,s.lng],{radius:5,color:'#fff',weight:1.4,fillColor:colorOf[cat]||'#1d3f94',fillOpacity:.95,className:'sig-mark'})
-      .bindPopup(sigPopup(s)).bindTooltip(esc(s.name),{direction:'top'}).addTo(state.signalLayer);
+    const m=L.circleMarker([s.lat,s.lng],{radius:isPick?8:5,color:'#fff',weight:isPick?2.4:1.4,
+      fillColor:isPick?SIG_PICK:SIG_COLOR,fillOpacity:.95,className:'sig-mark'})
+      .bindPopup(sigPopup(s)).bindTooltip(esc(s.name),{direction:'top'});
+    m.addTo(state.signalLayer);
+    if(m.bringToFront)m.bringToFront();
+    state.sigMarks[s.ino]=m;
   });
-  if(cnt)cnt.textContent=shown+' of '+sigs.length+' signals';
-  buildSigLegend(mode,cats,counts,colorOf,only);
+  if(cnt)cnt.textContent=shown+' of '+sigs.length+' signals'+(corr?(' · '+esc(corr)):'');
 }
 
 /* ============================================================
