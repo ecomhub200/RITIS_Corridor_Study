@@ -527,6 +527,7 @@
     <button class="sb-item locked" data-nav="explore" onclick="setView('explore')"><span class="sb-ico">🔍</span> Explore</button>
     <button class="sb-item locked" data-nav="map" onclick="setView('map')"><span class="sb-ico">🗺️</span> Map</button>
     <button class="sb-item locked" data-nav="reports" onclick="setView('reports')"><span class="sb-ico">📑</span> Reports</button>
+    <button class="sb-item locked" data-nav="ba" onclick="setView('ba')"><span class="sb-ico">📈</span> Before &amp; After</button>
   </nav>
   <div class="sb-foot">Developed by Murad Al Qurishee<br><a href="mailto:aicreatesai08@gmail.com">aicreatesai08@gmail.com</a></div>
 </aside>
@@ -1081,6 +1082,62 @@
     </div>
   </div>
 
+  <!-- ================= BEFORE & AFTER STUDY ================= -->
+  <div class="panel reveal noprint ovis" data-view="ba">
+    <div class="panel-head">
+      <div class="panel-ico orange">📈</div>
+      <div><h2>Before &amp; After Study</h2><p>Quantify how a corridor improved after signal retiming — compare speed, travel time, delay &amp; reliability between a before window and an after window, then export a professional PDF.</p></div>
+    </div>
+    <div class="panel-body">
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px">
+        <div class="rpt-field">
+          <label>Jurisdiction / agency line</label>
+          <input type="text" id="baAgency" value="" placeholder="e.g., County / City Department of Public Works — Traffic Engineering">
+        </div>
+        <div class="rpt-field">
+          <label>Prepared by (optional)</label>
+          <input type="text" id="baAuthor" placeholder="Name, title">
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end;margin-bottom:6px">
+        <div class="rpt-field" style="min-width:170px">
+          <label>Retiming / adjustment date</label>
+          <input type="date" id="baRetime">
+        </div>
+        <div class="rpt-field" style="min-width:160px">
+          <label>Before — start</label>
+          <input type="date" id="baBefFrom">
+        </div>
+        <div class="rpt-field" style="min-width:160px">
+          <label>Before — end</label>
+          <input type="date" id="baBefTo">
+        </div>
+        <div class="rpt-field" style="min-width:160px">
+          <label>After — start</label>
+          <input type="date" id="baAftFrom">
+        </div>
+        <div class="rpt-field" style="min-width:160px">
+          <label>After — end</label>
+          <input type="date" id="baAftTo">
+        </div>
+        <button class="tool-btn" onclick="baAutoSplit()" title="Fill the before/after windows from the retiming date and the loaded data range"><span class="ti">↔️</span> Auto-split from retiming date</button>
+      </div>
+      <div id="baRange" class="noprint-note" style="margin-bottom:10px"></div>
+      <div class="radio-row" style="margin-bottom:10px">
+        <label><input type="radio" name="baScope" value="all" checked onchange="updateBAScope()"> Entire jurisdiction (all corridors with data)</label>
+        <label><input type="radio" name="baScope" value="sel" onchange="updateBAScope()"> Selected corridors only</label>
+      </div>
+      <div class="ms" id="baPick"></div>
+      <div class="pick-actions" style="margin-top:6px">
+        <button class="btn-recalc" onclick="runBeforeAfter()">▶ Run comparison</button>
+        <button class="tool-btn primary" onclick="generateBAReport()"><span class="ti">📑</span> Generate PDF report</button>
+        <button class="tool-btn" onclick="downloadBAData()"><span class="ti">📥</span> Download data (CSV)</button>
+        <span class="noprint-note">Before/after windows must fall inside the processed data range. Speed up &amp; delay/IQR/congestion down = improvement.</span>
+      </div>
+      <div id="baOut" style="margin-top:18px"></div>
+    </div>
+  </div>
+
 </div><!-- /resultsArea -->
 </main>
 
@@ -1120,7 +1177,8 @@ const VIEW_META={
   rankings:['Rankings','Prioritized corridors by OCRA score'],
   explore:['Explore Corridors','Hourly travel time, delay & speed — driven by your selection'],
   map:['Corridor Map','Geographic view of corridors, colored by metric'],
-  reports:['Reports','Build a print-ready PDF / CSV report']
+  reports:['Reports','Build a print-ready PDF / CSV report'],
+  ba:['Before & After Study','Compare corridor speed, travel time, delay & reliability before vs after a retiming']
 };
 function setView(name){
   if(name!=='upload' && !state.systems)name='upload';          // result views locked until processed
@@ -1135,6 +1193,7 @@ function setView(name){
   window.scrollTo(0,0);
   if(name==='explore'){ buildPicker('cmpPick'); buildPicker('drillPick'); buildPicker('speedPick'); drawDrilldown(); renderSpeed(); }
   if(name==='reports'){ buildPicker('rptPick'); updateRptScope(); }
+  if(name==='ba'){ buildPicker('baPick'); baInitDates(); updateBAScope(); }
   if(name==='map'){ setTimeout(()=>{ if(state.map)state.map.invalidateSize(); renderMap(); }, 60); }
 }
 // reflect data-loaded state in the sidebar + topbar status
@@ -1484,6 +1543,7 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
     const perMile=knownMi>0?knownRef/knownMi:NaN;
     refs.forEach((r,k)=>{if(!isFinite(r))refs[k]=isFinite(perMile)?perMile*(state.segMiles[c.segs[k]]||0):0;});
     const refTT=refs.reduce((a,b)=>a+b,0);          // corridor free-flow = sum of segment refs
+    c.refs=refs;c.refTT=refTT;                      // persist for the Before & After study (re-aggregate windows)
 
     const hourly=Array.from({length:24},()=>({s:0,n:0}));
     const periodDelays={AM:[],MD:[],PM:[]},allDelays=[];
@@ -2438,7 +2498,8 @@ state.msSel=state.msSel||{};
 const MS_ONCHANGE={                              // selection live-drives the Explore charts
   drillPick:()=>drawDrilldown(),
   speedPick:()=>renderSpeed(),
-  cmpPick:()=>{ const out=document.getElementById('cmpOut'); if(out&&out.querySelector('table'))runCompare(); }
+  cmpPick:()=>{ const out=document.getElementById('cmpOut'); if(out&&out.querySelector('table'))runCompare(); },
+  baPick:()=>{ const out=document.getElementById('baOut'); if(out&&out.querySelector('table'))runBeforeAfter(); }
 };
 
 function buildPicker(id){ buildMultiSelect(id); }   // back-compat render entry
@@ -3229,6 +3290,454 @@ function downloadReportCSV(sel,stem,dateTag){
       s.AADT,s.T,fmt(s.score,2)]);
   });
   downloadCSV(`Retiming_Report_Data_${stem}_${dateTag}.csv`,rows);
+}
+
+
+/* ============================================================
+   BEFORE & AFTER STUDY — re-aggregate the loaded probe data into
+   a "before" and an "after" date window and quantify the change.
+   Reuses each corridor's persisted free-flow refs (c.refs/c.refTT)
+   and the per-15-min buckets (c.buckets) kept after processing.
+   ============================================================ */
+
+// metric catalogue shared by the on-page view, the CSV and the PDF.
+// lower:true → a reduction is the improvement; get() reads a baSystemWindow result.
+const BA_METRICS=[
+  {key:'speed',lab:'Space-mean speed',unit:'mph',lower:false,dp:1,get:s=>s.speed?s.speed.mean:NaN},
+  {key:'tt',   lab:'Avg corridor travel time',unit:'min',lower:true,dp:2,get:s=>s.ttMean},
+  {key:'delay',lab:'Delay per intersection',unit:'s',lower:true,dp:1,get:s=>s.normDelay},
+  {key:'iqr',  lab:'Reliability (delay IQR)',unit:'min/int',lower:true,dp:3,get:s=>s.normIQR},
+  {key:'tti',  lab:'Travel Time Index',unit:'',lower:true,dp:2,get:s=>s.tti},
+  {key:'pti',  lab:'Planning Time Index',unit:'',lower:true,dp:2,get:s=>s.pti}
+];
+
+function baDataRange(){
+  const cov=state.coverage;
+  if(!cov||!cov.tsMin||!cov.tsMax)return null;
+  return {minD:cov.tsMin.slice(0,10).replace(/-/g,'')*1,maxD:cov.tsMax.slice(0,10).replace(/-/g,'')*1,
+          minISO:cov.tsMin.slice(0,10),maxISO:cov.tsMax.slice(0,10)};
+}
+function baSetRangeNote(){
+  const el=document.getElementById('baRange'); if(!el)return;
+  const rg=baDataRange();
+  el.textContent=rg?`Loaded probe data spans ${rg.minISO} → ${rg.maxISO}. Choose before/after windows within this range.`
+                   :'Process data first to enable the before/after study.';
+}
+function baInitDates(){
+  baSetRangeNote();
+  const rg=baDataRange(); if(!rg)return;
+  const get=id=>document.getElementById(id);
+  if(['baRetime','baBefFrom','baBefTo','baAftFrom','baAftTo'].some(id=>get(id).value))return; // respect user entries
+  const iso=d=>d.toISOString().slice(0,10);
+  const min=new Date(rg.minISO+'T00:00:00'),max=new Date(rg.maxISO+'T00:00:00');
+  const mid=new Date((min.getTime()+max.getTime())/2),dayBefore=new Date(mid.getTime()-864e5);
+  get('baRetime').value=iso(mid);
+  get('baBefFrom').value=rg.minISO; get('baBefTo').value=iso(dayBefore);
+  get('baAftFrom').value=iso(mid);  get('baAftTo').value=rg.maxISO;
+}
+function baAutoSplit(){
+  const rg=baDataRange(); if(!rg){toast('Process data first');return;}
+  const rv=document.getElementById('baRetime').value; if(!rv){toast('Enter the retiming / adjustment date first');return;}
+  const iso=d=>d.toISOString().slice(0,10),r=new Date(rv+'T00:00:00'),dayBefore=new Date(r.getTime()-864e5);
+  document.getElementById('baBefFrom').value=rg.minISO;
+  document.getElementById('baBefTo').value=iso(dayBefore);
+  document.getElementById('baAftFrom').value=rv;
+  document.getElementById('baAftTo').value=rg.maxISO;
+  toast('Before/after windows set from retiming date');
+  if(document.querySelector('#baOut table'))runBeforeAfter();
+}
+function updateBAScope(){
+  const r=document.querySelector('input[name=baScope]:checked'),box=document.getElementById('baPick');
+  if(box)box.classList.toggle('disabled', !r||r.value!=='sel');
+}
+function baSelection(){
+  if(!state.systems){toast('Process data first');return null;}
+  const scope=document.querySelector('input[name=baScope]:checked').value;
+  let sel;
+  if(scope==='all')sel=state.systems.filter(s=>s.hasData);
+  else{
+    const names=pickedNames('baPick');
+    if(!names.length){toast('Pick at least 1 corridor, or choose "Entire jurisdiction"');return null;}
+    sel=state.systems.filter(s=>names.includes(s.name));
+  }
+  return {sel:[...sel].sort((a,b)=>a.rank-b.rank),scope};
+}
+function baWindows(){
+  const v=id=>(document.getElementById(id).value||'').replace(/-/g,'')*1||0;
+  return {retime:v('baRetime'),bef:[v('baBefFrom'),v('baBefTo')],aft:[v('baAftFrom'),v('baAftTo')]};
+}
+function baValidate(w){
+  if(!w.bef[0]||!w.bef[1]||!w.aft[0]||!w.aft[1]){toast('Set both the before and after date windows');return false;}
+  if(w.bef[0]>w.bef[1]||w.aft[0]>w.aft[1]){toast('A window’s start date is after its end date');return false;}
+  const rg=baDataRange();
+  if(rg){
+    if(Math.max(w.bef[1],w.aft[1])<rg.minD||Math.min(w.bef[0],w.aft[0])>rg.maxD){toast('Windows fall entirely outside the loaded data range');return false;}
+    if(w.bef[0]<rg.minD||w.aft[1]>rg.maxD)toast('Note: part of a window is outside the loaded data range');
+  }
+  if(w.bef[1]>w.aft[0])toast('Note: the before and after windows overlap');
+  return true;
+}
+function baDelta(b,a,lowerBetter){
+  if(!isFinite(b)||!isFinite(a))return {b,a,abs:NaN,pct:NaN,better:null};
+  const abs=a-b, pct=b!==0?(lowerBetter?(b-a)/b*100:(a-b)/b*100):NaN, better=lowerBetter?(a<b):(a>b);
+  return {b,a,abs,pct,better};
+}
+
+// re-aggregate ONE direction (raw corridor object) over [dFrom,dTo] (YYYYMMDD ints).
+// Mirrors finalize()'s per-corridor loop, reusing c.refs / c.refTT for an identical reference.
+function computeCorridorWindow(c,dFrom,dTo,cfg){
+  const refs=c.refs,refTT=c.refTT;
+  const hourly=Array.from({length:24},()=>({s:0,n:0}));
+  const periodDelays={AM:[],MD:[],PM:[]},allDelays=[];
+  const spArr=[],spPeriod={AM:[],MD:[],PM:[]},ttArr=[];
+  c.buckets.forEach((b,ts)=>{
+    const {dow,hour,d}=parseTs(ts);
+    if(hour<0||d<dFrom||d>dTo||!cfg.dows.has(dow))return;
+    let refRep;
+    if(c.bigMask){refRep=refTT*(c.totalMiles>0?b.mi/c.totalMiles:0);}
+    else{refRep=0;let m=b.m0;for(let k=0;m;k++,m>>>=1)if(m&1)refRep+=refs[k];m=b.m1;for(let k=26;m;k++,m>>>=1)if(m&1)refRep+=refs[k];}
+    const delay=b.tt-refRep;
+    hourly[hour].s+=refTT+delay;hourly[hour].n++;
+    if(b.tt>0&&b.mi>0)spArr.push(b.mi*60/b.tt);
+    ttArr.push(refTT+delay);
+    let p=null;
+    if(hour>=cfg.am[0]&&hour<cfg.am[1])p='AM';
+    else if(hour>=cfg.md[0]&&hour<cfg.md[1])p='MD';
+    else if(hour>=cfg.pm[0]&&hour<cfg.pm[1])p='PM';
+    if(p){periodDelays[p].push(delay);allDelays.push(delay);if(b.tt>0&&b.mi>0)spPeriod[p].push(b.mi*60/b.tt);}
+  });
+  const avg=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:NaN;
+  spArr.sort((x,y)=>x-y);ttArr.sort((x,y)=>x-y);
+  const med=a=>{const v=[...a].sort((x,y)=>x-y);return quantile(v,0.5);};
+  return {bearing:c.bearing,nObs:allDelays.length,delays:allDelays,refTT,
+    amAvg:avg(periodDelays.AM),mdAvg:avg(periodDelays.MD),pmAvg:avg(periodDelays.PM),
+    hourly:hourly.map(h=>h.n?h.s/h.n:null),
+    spd:{n:spArr.length,mean:avg(spArr),p15:quantile(spArr,0.15),p50:quantile(spArr,0.5),p85:quantile(spArr,0.85),
+      am50:med(spPeriod.AM),md50:med(spPeriod.MD),pm50:med(spPeriod.PM)},
+    ttMean:avg(ttArr),ttP95:quantile(ttArr,0.95)};
+}
+// pool a system's directions over a window → system-level before/after metrics
+function baSystemWindow(sys,dFrom,dTo){
+  const cmap=state._corrByIdx||(state._corrByIdx=new Map(state.corridors.map(c=>[c.idx,c])));
+  const dirs=sys.dirs.map(d=>{const c=cmap.get(d.idx);return c?computeCorridorWindow(c,dFrom,dTo,state.cfg):null;}).filter(Boolean);
+  const pooled=[]; dirs.forEach(d=>{for(const v of d.delays)pooled.push(v);});
+  if(!pooled.length)return {name:sys.name,nSignals:sys.nSignals,nObs:0,empty:true,dirs};
+  pooled.sort((a,b)=>a-b);
+  const nSignals=sys.nSignals||1;
+  const med=quantile(pooled,0.5),iqr=quantile(pooled,0.75)-quantile(pooled,0.25);
+  const sAvg=k=>{const v=dirs.map(d=>d[k]).filter(isFinite);return v.length?v.reduce((a,b)=>a+b,0)/v.length:NaN;};
+  const spW=key=>{let s=0,n=0;dirs.forEach(d=>{if(d.spd&&d.spd.n&&isFinite(d.spd[key])){s+=d.spd[key]*d.spd.n;n+=d.spd.n;}});return n?s/n:NaN;};
+  const ttW=key=>{let s=0,n=0;dirs.forEach(d=>{if(isFinite(d[key])&&d.nObs>0){s+=d[key]*d.nObs;n+=d.nObs;}});return n?s/n:NaN;};
+  const ttMean=ttW('ttMean'),ttP95=ttW('ttP95'),refTT=ttW('refTT');
+  return {name:sys.name,nSignals,nObs:pooled.length,empty:false,dirs,
+    medianDelay:med,iqrDelay:iqr,normDelay:med/nSignals*60,normIQR:iqr/nSignals,
+    amInt:sAvg('amAvg')/nSignals,mdInt:sAvg('mdAvg')/nSignals,pmInt:sAvg('pmAvg')/nSignals,
+    speed:{mean:spW('mean'),p15:spW('p15'),p50:spW('p50'),p85:spW('p85'),am50:spW('am50'),md50:spW('md50'),pm50:spW('pm50')},
+    ttMean,ttP95,refTT,
+    tti:(isFinite(ttMean)&&refTT>0)?ttMean/refTT:NaN,pti:(isFinite(ttP95)&&refTT>0)?ttP95/refTT:NaN};
+}
+// system hourly travel time = average of its directions' hourly profiles
+function baSysHourly(win){
+  return Array.from({length:24},(_,h)=>{
+    const v=win.dirs.map(d=>d.hourly?d.hourly[h]:null).filter(x=>x!=null&&isFinite(x));
+    return v.length?v.reduce((a,b)=>a+b,0)/v.length:null;
+  });
+}
+
+/* ---------- on-page rendering ---------- */
+let baChartObjs=[];
+function baDestroyCharts(){ baChartObjs.forEach(c=>{try{c.destroy();}catch(e){}}); baChartObjs=[]; }
+function baNice(n){ return n?String(n).replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3'):'—'; }
+
+function runBeforeAfter(){
+  const out=document.getElementById('baOut'); if(!out)return;
+  const r=baSelection(); if(!r)return;
+  const w=baWindows(); if(!baValidate(w))return;
+  baDestroyCharts();
+  state._corrByIdx=new Map(state.corridors.map(c=>[c.idx,c]));
+  const comp=r.sel.map(s=>({s,B:baSystemWindow(s,w.bef[0],w.bef[1]),A:baSystemWindow(s,w.aft[0],w.aft[1])}));
+
+  const kpis=BA_METRICS.map(m=>{
+    const ps=comp.map(c=>baDelta(m.get(c.B),m.get(c.A),m.lower).pct).filter(isFinite);
+    const avg=ps.length?ps.reduce((a,b)=>a+b,0)/ps.length:NaN;
+    const cls=!isFinite(avg)?'':(avg>=0?'k-green':'k-orange'),arrow=!isFinite(avg)?'':(avg>=0?'▲':'▼');
+    return `<div class="kpi ${cls}"><div class="lab">${m.lab}</div><div class="val">${isFinite(avg)?(avg>=0?'+':'')+avg.toFixed(1)+'%':'—'}</div><div class="sub">${arrow} ${m.lower?'lower = better':'higher = better'}${m.unit?' · '+m.unit:''}</div></div>`;
+  }).join('');
+
+  let html=`<div style="margin-bottom:14px;font-size:13px;color:var(--muted)">
+      <b style="color:var(--ink)">Before</b> ${baNice(w.bef[0])} → ${baNice(w.bef[1])} &nbsp;·&nbsp;
+      <b style="color:var(--ink)">Retiming</b> ${baNice(w.retime)} &nbsp;·&nbsp;
+      <b style="color:var(--ink)">After</b> ${baNice(w.aft[0])} → ${baNice(w.aft[1])} &nbsp;·&nbsp; ${r.sel.length} corridor(s)
+    </div>
+    <div class="kpi-row" style="margin-bottom:6px">${kpis}</div>
+    <div class="noprint-note" style="margin-bottom:20px">Averaged across selected corridors with data in both windows. Positive % = improvement.</div>`;
+  comp.forEach((c,ci)=>{ html+=baCorridorBlockHTML(c,ci); });
+  out.innerHTML=html;
+  comp.forEach((c,ci)=>{ if(!c.B.empty&&!c.A.empty)baDrawCorridorCharts(c,ci); });
+}
+function baCorridorBlockHTML(c,ci){
+  const s=c.s;
+  if(c.B.empty||c.A.empty){
+    const which=[c.B.empty?'before':'',c.A.empty?'after':''].filter(Boolean).join(' & ');
+    return `<div style="margin-bottom:24px"><h3 style="margin:0 0 6px">${s.name}</h3>
+      <div class="diag-chip warn" style="display:inline-block">Insufficient probe data in the ${which} window — comparison skipped for this corridor.</div></div>`;
+  }
+  const rows=BA_METRICS.map(m=>{
+    const b=m.get(c.B),a=m.get(c.A),dl=baDelta(b,a,m.lower);
+    const pc=isFinite(dl.pct)?(dl.pct>=0?'+':'')+dl.pct.toFixed(1)+'%':'—';
+    const col=dl.better==null?'var(--muted)':(dl.better?'var(--green)':'var(--orange)');
+    const ar=dl.better==null?'':(dl.better?'▲':'▼');
+    return `<tr><td class="name">${m.lab}${m.unit?' <span style="color:var(--muted);font-weight:400">('+m.unit+')</span>':''}</td>
+      <td style="text-align:center">${isFinite(b)?b.toFixed(m.dp):'—'}</td>
+      <td style="text-align:center">${isFinite(a)?a.toFixed(m.dp):'—'}</td>
+      <td style="text-align:center">${isFinite(dl.abs)?(dl.abs>=0?'+':'')+dl.abs.toFixed(m.dp):'—'}</td>
+      <td style="text-align:center;font-weight:800;color:${col}">${ar} ${pc}</td></tr>`;
+  }).join('');
+  return `<div style="margin-bottom:30px">
+    <h3 style="margin:0 0 8px">${s.name} <span style="font-weight:500;color:var(--muted);font-size:13px">— ${s.nSignals} signals · ${c.B.nObs.toLocaleString()} before / ${c.A.nObs.toLocaleString()} after intervals</span></h3>
+    <div style="overflow-x:auto"><table style="min-width:520px">
+      <thead><tr><th>Metric</th><th style="text-align:center">Before</th><th style="text-align:center">After</th><th style="text-align:center">Change</th><th style="text-align:center">% Improvement</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:14px">
+      <div style="height:240px"><canvas id="baHr${ci}"></canvas></div>
+      <div style="height:240px"><canvas id="baSp${ci}"></canvas></div>
+      <div style="height:240px"><canvas id="baDl${ci}"></canvas></div>
+    </div>
+  </div>`;
+}
+function baDrawCorridorCharts(c,ci){
+  const B=c.B,A=c.A,hours=Array.from({length:24},(_,h)=>(h%12===0?12:h%12)+(h<12?'a':'p'));
+  const base={responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}}};
+  const hc=document.getElementById('baHr'+ci);
+  if(hc)baChartObjs.push(new Chart(hc,{type:'line',data:{labels:hours,datasets:[
+    {label:'Before',data:baSysHourly(B),borderColor:'#94a3b8',backgroundColor:'#94a3b8',borderDash:[6,5],tension:.35,spanGaps:true,pointRadius:0,borderWidth:2},
+    {label:'After',data:baSysHourly(A),borderColor:'#1d8a4e',backgroundColor:'#1d8a4e',tension:.35,spanGaps:true,pointRadius:2,borderWidth:2.2}
+  ]},options:Object.assign({},base,{plugins:{legend:{position:'bottom'},title:{display:true,text:'Hourly travel time (min)'}},scales:{y:{title:{display:true,text:'min'}}}})}));
+  const sc=document.getElementById('baSp'+ci);
+  if(sc)baChartObjs.push(new Chart(sc,{type:'bar',data:{labels:['Overall','AM','Mid','PM'],datasets:[
+    {label:'Before',data:[B.speed.mean,B.speed.am50,B.speed.md50,B.speed.pm50],backgroundColor:'#94a3b8',borderRadius:4},
+    {label:'After',data:[A.speed.mean,A.speed.am50,A.speed.md50,A.speed.pm50],backgroundColor:'#1d3f94',borderRadius:4}
+  ]},options:Object.assign({},base,{plugins:{legend:{position:'bottom'},title:{display:true,text:'Space-mean speed (mph)'}},scales:{y:{beginAtZero:true,title:{display:true,text:'mph'}}}})}));
+  const dc=document.getElementById('baDl'+ci),toS=v=>isFinite(v)?v*60:null;
+  if(dc)baChartObjs.push(new Chart(dc,{type:'bar',data:{labels:['AM','Mid','PM'],datasets:[
+    {label:'Before',data:[toS(B.amInt),toS(B.mdInt),toS(B.pmInt)],backgroundColor:'#f0a98c',borderRadius:4},
+    {label:'After',data:[toS(A.amInt),toS(A.mdInt),toS(A.pmInt)],backgroundColor:'#f26822',borderRadius:4}
+  ]},options:Object.assign({},base,{plugins:{legend:{position:'bottom'},title:{display:true,text:'Delay per intersection (s)'}},scales:{y:{beginAtZero:true,title:{display:true,text:'s / int'}}}})}));
+}
+
+/* ---------- exports ---------- */
+function generateBAReport(){
+  if(!state.systems){toast('Process data first');return;}
+  const r=baSelection(); if(!r)return;
+  const w=baWindows(); if(!baValidate(w))return;
+  if(!window.jspdf||!window.jspdf.jsPDF){toast('PDF library not loaded — check your internet connection and reload');return;}
+  toast('Building Before/After PDF — '+r.sel.length+' corridor(s)…');
+  setTimeout(()=>{ try{buildBeforeAfterPDF(r.sel,w,r.scope);toast('Before/After PDF downloaded');}
+    catch(e){console.error(e);toast('Report error: '+e.message);} },50);
+}
+function downloadBAData(){
+  if(!state.systems){toast('Process data first');return;}
+  const r=baSelection(); if(!r)return;
+  const w=baWindows(); if(!baValidate(w))return;
+  state._corrByIdx=new Map(state.corridors.map(c=>[c.idx,c]));
+  const rows=[['Corridor','Metric','Unit','Before','After','Change','% Improvement','Before intervals','After intervals']];
+  r.sel.forEach(s=>{
+    const B=baSystemWindow(s,w.bef[0],w.bef[1]),A=baSystemWindow(s,w.aft[0],w.aft[1]);
+    BA_METRICS.forEach(m=>{
+      const b=m.get(B),a=m.get(A),dl=baDelta(b,a,m.lower);
+      rows.push([s.name,m.lab,m.unit,isFinite(b)?b.toFixed(m.dp):'',isFinite(a)?a.toFixed(m.dp):'',
+        isFinite(dl.abs)?dl.abs.toFixed(m.dp):'',isFinite(dl.pct)?dl.pct.toFixed(1):'',B.nObs||0,A.nObs||0]);
+    });
+  });
+  const stem=r.sel.length===1?r.sel[0].name.replace(/[^\w]+/g,'_').slice(0,60):(r.scope==='all'?'Jurisdiction':'Selected_Corridors');
+  downloadCSV(`BeforeAfter_${stem}_${new Date().toISOString().slice(0,10)}.csv`,rows);
+}
+
+/* ---------- professional PDF (modeled on buildReportPDF) ---------- */
+function buildBeforeAfterPDF(sel,w,scope){
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({unit:'pt',format:'letter'});
+  const W=612,H=792,ML=48,MR=48,CW=W-ML-MR,CT=64,CB=716;
+  const cov=state.coverage||{},cfg=state.cfg||{};
+  const agency=document.getElementById('baAgency').value.trim();
+  const author=document.getElementById('baAuthor').value.trim();
+  const dows=cfg.dows?[...cfg.dows].sort().map(d=>DOWS[d]).join(' / '):'';
+  const today=new Date().toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'});
+  const befStr=baNice(w.bef[0])+' to '+baNice(w.bef[1]),aftStr=baNice(w.aft[0])+' to '+baNice(w.aft[1]);
+  const scopeLabel=scope==='all'?'Entire jurisdiction — all corridors with probe data':(sel.length+' selected corridor(s)');
+  const toc=[]; let y=CT;
+
+  /* ---- layout helpers (same set as the prioritization report) ---- */
+  function newPage(){doc.addPage();y=CT;}
+  function ensure(h){if(y+h>CB)newPage();}
+  function sectionTitle(t){
+    ensure(46);toc.push({t,p:doc.getNumberOfPages()});
+    doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(...PDFC.navy);
+    const lines=doc.splitTextToSize(t,CW);doc.text(lines,ML,y);
+    const by=y+(lines.length-1)*16+6;
+    doc.setDrawColor(...PDFC.line);doc.setLineWidth(1.1);doc.line(ML,by,W-MR,by);
+    y=by+18;doc.setTextColor(...PDFC.ink);
+  }
+  function para(t,size,color){
+    size=size||10;color=color||PDFC.ink;
+    doc.setFont('helvetica','normal');doc.setFontSize(size);doc.setTextColor(...color);
+    const lines=doc.splitTextToSize(t,CW),hh=lines.length*size*1.4;
+    ensure(hh+6);doc.text(lines,ML,y);y+=hh+9;doc.setTextColor(...PDFC.ink);
+  }
+  function captionedChart(t,url,w2,h2){
+    ensure(h2+34);
+    doc.setFont('helvetica','bold');doc.setFontSize(13);doc.setTextColor(...PDFC.navy);
+    doc.text(t,ML,y);y+=12;doc.setTextColor(...PDFC.ink);
+    doc.addImage(url,'PNG',ML,y,w2,h2);y+=h2+16;
+  }
+  function table(head,body,extra){
+    doc.autoTable(Object.assign({head:[head],body,startY:y,margin:{left:ML,right:MR,top:CT,bottom:H-CB},
+      styles:{font:'helvetica',fontSize:8.3,cellPadding:4,textColor:PDFC.ink,lineColor:PDFC.line,lineWidth:0.4},
+      headStyles:{fillColor:PDFC.navy,textColor:[255,255,255],fontStyle:'bold',fontSize:8.3},
+      alternateRowStyles:{fillColor:[250,252,255]}},extra||{}));
+    y=doc.lastAutoTable.finalY+16;
+  }
+  function statGrid(items){
+    const cols=4,gw=(CW-(cols-1)*8)/cols,gh=42,rowsN=Math.ceil(items.length/cols);
+    ensure(rowsN*(gh+8));
+    items.forEach((it,i)=>{
+      const cx=ML+(i%cols)*(gw+8),cy=y+Math.floor(i/cols)*(gh+8);
+      doc.setFillColor(...PDFC.soft);doc.roundedRect(cx,cy,gw,gh,5,5,'F');
+      doc.setFont('helvetica','bold');doc.setFontSize(11);doc.setTextColor(...PDFC.ink);
+      doc.text(String(it[0]),cx+9,cy+18);
+      doc.setFont('helvetica','normal');doc.setFontSize(6.6);doc.setTextColor(...PDFC.muted);
+      doc.text(it[1].toUpperCase(),cx+9,cy+32);
+    });
+    y+=rowsN*(gh+8)+8;doc.setTextColor(...PDFC.ink);
+  }
+
+  state._corrByIdx=new Map(state.corridors.map(c=>[c.idx,c]));
+  const comp=sel.map(s=>({s,B:baSystemWindow(s,w.bef[0],w.bef[1]),A:baSystemWindow(s,w.aft[0],w.aft[1])}));
+  const headline=BA_METRICS.map(m=>{
+    const ps=comp.map(c=>baDelta(m.get(c.B),m.get(c.A),m.lower).pct).filter(isFinite);
+    return {m,a:ps.length?ps.reduce((x,y2)=>x+y2,0)/ps.length:NaN};
+  });
+
+  /* ================= COVER ================= */
+  doc.setFillColor(...PDFC.deep);doc.rect(0,0,W,178,'F');
+  doc.setFillColor(...PDFC.orange);doc.rect(0,178,W,6,'F');
+  doc.setTextColor(255,255,255);doc.setFont('helvetica','bold');doc.setFontSize(27);
+  doc.text('Signal Retiming',ML,82);doc.text('Before & After Study',ML,114);
+  doc.setFont('helvetica','normal');doc.setFontSize(11);
+  if(agency)doc.text(doc.splitTextToSize(agency,CW),ML,146);
+  doc.setTextColor(...PDFC.ink);y=216;
+  doc.autoTable({body:[
+      ['Report scope',scopeLabel],
+      ['Before window',befStr],
+      ['Retiming / adjustment date',baNice(w.retime)],
+      ['After window',aftStr],
+      ['Days analyzed',dows],
+      ['Probe data',((cov.tsMin?cov.tsMin.slice(0,10):'?')+' to '+(cov.tsMax?cov.tsMax.slice(0,10):'?'))+'  (INRIX XD via RITIS)'],
+      ['Corridors compared',String(sel.length)],
+      ['Generated',today+(author?'  ·  Prepared by '+author:'')]
+    ],startY:y,theme:'plain',margin:{left:ML,right:MR},
+    styles:{font:'helvetica',fontSize:10.5,cellPadding:6,textColor:PDFC.ink},
+    columnStyles:{0:{fontStyle:'bold',cellWidth:178,textColor:PDFC.navy}}});
+  y=doc.lastAutoTable.finalY+26;
+
+  /* ================= EXECUTIVE SUMMARY ================= */
+  newPage();
+  sectionTitle('Executive Summary');
+  const sum=headline.filter(h=>isFinite(h.a)).map(h=>`${h.m.lab} ${(h.a>=0?'+':'')+h.a.toFixed(1)}%`).join(';  ');
+  para(`This study compares corridor performance before (${befStr}) and after (${aftStr}) the signal retiming on ${baNice(w.retime)}. Positive percentages indicate improvement — higher space-mean speeds and lower travel time, delay, travel-time variability, and congestion indices. Average change across ${sel.length} corridor(s): ${sum||'no overlapping data'}.`,10.5);
+  const himg=chartToImg({type:'bar',data:{labels:headline.map(h=>h.m.lab),
+    datasets:[{label:'% improvement',data:headline.map(h=>isFinite(h.a)?+h.a.toFixed(1):0),
+      backgroundColor:headline.map(h=>isFinite(h.a)&&h.a>=0?'#1d8a4e':'#c0392b'),borderRadius:4}]},
+    options:{plugins:{legend:{display:false}},scales:{x:{ticks:{font:{size:10},maxRotation:30,minRotation:0}},
+      y:{title:{display:true,text:'% improvement (positive = better)',font:{size:11}}}}}},900,360);
+  captionedChart('Average Improvement by Metric',himg,CW,CW*360/900);
+
+  /* ================= IMPROVEMENT SUMMARY TABLE ================= */
+  sectionTitle('Improvement Summary');
+  table(['Corridor','Speed %','Travel time %','Delay %','IQR %','TTI %','PTI %'],
+    comp.map(c=>{
+      const cell=m=>{const dl=baDelta(m.get(c.B),m.get(c.A),m.lower);return isFinite(dl.pct)?(dl.pct>=0?'+':'')+dl.pct.toFixed(1):'—';};
+      return [c.s.name,cell(BA_METRICS[0]),cell(BA_METRICS[1]),cell(BA_METRICS[2]),cell(BA_METRICS[3]),cell(BA_METRICS[4]),cell(BA_METRICS[5])];
+    }),{columnStyles:{0:{cellWidth:150,fontStyle:'bold'}}});
+
+  /* ================= PER-CORRIDOR SECTIONS ================= */
+  const hours=Array.from({length:24},(_,h)=>(h%12===0?12:h%12)+(h<12?'a':'p'));
+  comp.forEach(c=>{
+    newPage();
+    sectionTitle(c.s.name);
+    if(c.B.empty||c.A.empty){
+      para('Insufficient probe data in the '+([c.B.empty?'before':'',c.A.empty?'after':''].filter(Boolean).join(' & '))+' window — before/after comparison is not available for this corridor.',10,PDFC.muted);
+      return;
+    }
+    statGrid([
+      [fmt1(c.B.speed.mean)+' → '+fmt1(c.A.speed.mean),'Speed mph before→after'],
+      [fmt(c.B.ttMean,2)+' → '+fmt(c.A.ttMean,2),'Travel time min'],
+      [fmt1(c.B.normDelay)+' → '+fmt1(c.A.normDelay),'Delay s/int'],
+      [fmt(c.B.normIQR,3)+' → '+fmt(c.A.normIQR,3),'IQR min/int'],
+      [fmt(c.B.tti,2)+' → '+fmt(c.A.tti,2),'Travel Time Index'],
+      [fmt(c.B.pti,2)+' → '+fmt(c.A.pti,2),'Planning Time Index'],
+      [c.B.nObs.toLocaleString(),'Before intervals'],
+      [c.A.nObs.toLocaleString(),'After intervals']
+    ]);
+    table(['Metric','Unit','Before','After','Change','% Improvement'],
+      BA_METRICS.map(m=>{const b=m.get(c.B),a=m.get(c.A),dl=baDelta(b,a,m.lower);
+        return [m.lab,m.unit||'—',isFinite(b)?b.toFixed(m.dp):'—',isFinite(a)?a.toFixed(m.dp):'—',
+          isFinite(dl.abs)?(dl.abs>=0?'+':'')+dl.abs.toFixed(m.dp):'—',
+          isFinite(dl.pct)?(dl.pct>=0?'+':'')+dl.pct.toFixed(1)+'%':'—'];}),
+      {columnStyles:{0:{cellWidth:150,fontStyle:'bold'},5:{fontStyle:'bold'}}});
+    const hi=chartToImg({type:'line',data:{labels:hours,datasets:[
+      {label:'Before',data:baSysHourly(c.B),borderColor:'#94a3b8',borderDash:[6,5],tension:.35,spanGaps:true,pointRadius:0,borderWidth:2},
+      {label:'After',data:baSysHourly(c.A),borderColor:'#1d8a4e',tension:.35,spanGaps:true,pointRadius:2,borderWidth:2.4}
+    ]},options:{plugins:{legend:{labels:{font:{size:11}}}},scales:{y:{title:{display:true,text:'Corridor travel time (min)',font:{size:11}}},x:{ticks:{font:{size:10}}}}}},880,330);
+    captionedChart('Hourly Travel Time — Before vs After',hi,CW,CW*330/880);
+    const sp=chartToImg({type:'bar',data:{labels:['Overall','AM','Mid','PM'],datasets:[
+      {label:'Before',data:[c.B.speed.mean,c.B.speed.am50,c.B.speed.md50,c.B.speed.pm50],backgroundColor:'#94a3b8',borderRadius:4},
+      {label:'After',data:[c.A.speed.mean,c.A.speed.am50,c.A.speed.md50,c.A.speed.pm50],backgroundColor:'#1d3f94',borderRadius:4}
+    ]},options:{plugins:{legend:{labels:{font:{size:11}}}},scales:{y:{beginAtZero:true,title:{display:true,text:'Space-mean speed (mph)',font:{size:11}}}}}},880,300);
+    captionedChart('Space-Mean Speed by Period — Before vs After',sp,CW,CW*300/880);
+  });
+
+  /* ================= METHODOLOGY ================= */
+  newPage();
+  sectionTitle('Methodology & Data Notes');
+  para('Data: INRIX XD probe travel times via RITIS, '+dows+'. The same probe dataset is split into the before and after windows shown on the cover; both windows must fall within the processed date range.',9.5);
+  para('Delay: observed corridor travel time minus a free-flow reference (per-segment 25th-percentile night travel time, '+cfg.nightS+':00–'+cfg.nightE+':00), pooled across directions and normalized by signal count — identical to the prioritization analysis.',9.5);
+  para('Speeds are corridor space-mean speeds from probe travel times — appropriate for before/after screening, not a substitute for spot-speed studies. Travel Time Index = mean travel time ÷ free-flow; Planning Time Index = 95th-percentile travel time ÷ free-flow (a reliability/congestion measure). Lower is better for delay, travel time, IQR, TTI and PTI; higher is better for speed.',9.5);
+  para('Comparisons assume traffic demand and network conditions outside the retiming are broadly similar between windows; large differences in seasonality, construction, or incidents can affect results.',9.5);
+
+  /* ================= TABLE OF CONTENTS (insert as page 2) ================= */
+  doc.addPage();y=CT+8;
+  doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(...PDFC.navy);
+  doc.text('Table of Contents',ML,y);
+  doc.setDrawColor(...PDFC.line);doc.setLineWidth(1.1);doc.line(ML,y+6,W-MR,y+6);
+  y+=28;doc.setFontSize(10.5);
+  toc.forEach(e=>{
+    if(y>CB)return;
+    const pg=String(e.p+1);
+    doc.setFont('helvetica','bold');doc.setTextColor(...PDFC.ink);
+    const title=doc.splitTextToSize(e.t,CW-60)[0];doc.text(title,ML,y);
+    doc.setTextColor(...PDFC.muted);
+    const tw=doc.getTextWidth(title);
+    doc.setLineDashPattern([1,2],0);doc.setDrawColor(...PDFC.line);doc.line(ML+tw+8,y-2,W-MR-26,y-2);doc.setLineDashPattern([],0);
+    doc.text(pg,W-MR,y,{align:'right'});y+=18;
+  });
+  doc.movePage(doc.getNumberOfPages(),2);
+
+  /* ================= HEADER / FOOTER PASS ================= */
+  const N=doc.getNumberOfPages();
+  const agencyShort=agency?(agency.length>70?agency.slice(0,67)+'...':agency):'Signal Prioritization Studio';
+  for(let i=2;i<=N;i++){
+    doc.setPage(i);
+    doc.setFont('helvetica','normal');doc.setFontSize(7.6);doc.setTextColor(...PDFC.muted);
+    doc.text('Signal Retiming — Before & After Study',ML,32);
+    doc.text(agencyShort,W-MR,32,{align:'right'});
+    doc.setDrawColor(...PDFC.line);doc.setLineWidth(.6);
+    doc.line(ML,38,W-MR,38);doc.line(ML,H-42,W-MR,H-42);
+    doc.text(today,ML,H-28);doc.text('Page '+i+' of '+N,W-MR,H-28,{align:'right'});
+  }
+
+  const stem=sel.length===1?sel[0].name.replace(/[^\w]+/g,'_').slice(0,60):(scope==='all'?'Jurisdiction':'Selected_Corridors');
+  doc.save(`BeforeAfter_${stem}_${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
 
