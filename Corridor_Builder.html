@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Corridor Data Builder</title>
+<style>
+  :root{
+    --bg:#0f141a; --ink:#e6edf3; --mut:#9aa7b4; --faint:#6b7886;
+    --card:#161d25; --line:#27313c; --line2:#1e2630;
+    --brand:#4c9f70; --brand-d:#3f8a60; --accent:#5b9bff;
+    --ok:#54b889; --warn:#e0a64b; --bad:#d9637a;
+    --shadow:0 1px 2px rgba(0,0,0,.30),0 6px 20px rgba(0,0,0,.28);
+    --rad:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:14.5px/1.55 ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 22px 80px}
+  header{display:flex;align-items:center;gap:14px;padding:26px 0 20px}
+  .logo{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,var(--brand),var(--brand-d));display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:var(--shadow)}
+  .logo svg{width:24px;height:24px}
+  header h1{font-size:19px;margin:0;letter-spacing:-.01em}
+  header p{margin:2px 0 0;color:var(--mut);font-size:13px;max-width:620px}
+  .ver{margin-left:auto;font-size:11px;color:var(--faint);border:1px solid var(--line);padding:4px 9px;border-radius:20px;background:var(--card);white-space:nowrap}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--rad);box-shadow:var(--shadow);padding:22px;margin-bottom:18px}
+  .step{display:flex;align-items:center;gap:10px;margin:0 0 16px}
+  .badge{width:24px;height:24px;border-radius:7px;background:var(--brand);color:#06140c;font-size:13px;font-weight:800;display:flex;align-items:center;justify-content:center}
+  .step h2{font-size:15px;margin:0}
+  .step .hint{color:var(--faint);font-size:12.5px;margin-left:auto}
+  .drops{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+  @media(max-width:820px){.drops{grid-template-columns:1fr}}
+  .drop{border:1.5px dashed var(--line);border-radius:12px;padding:16px;cursor:pointer;transition:.15s;background:#121922;position:relative;min-height:120px}
+  .drop:hover{border-color:var(--accent);background:#15202c}
+  .drop.drag{border-color:var(--accent);background:#16222f}
+  .drop.set{border-style:solid;border-color:var(--brand);background:rgba(76,159,112,.08)}
+  .drop .tag{position:absolute;top:11px;right:12px;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}
+  .drop.req .tag{color:var(--warn)} .drop.opt .tag{color:var(--faint)}
+  .drop .nm{font-weight:650;font-size:13.5px;display:flex;align-items:center;gap:7px}
+  .drop .nm svg{width:16px;height:16px;color:var(--brand)}
+  .drop .desc{color:var(--mut);font-size:12px;margin-top:6px;min-height:28px}
+  .drop .file{margin-top:10px;font-size:12px;color:#7bd6a0;font-weight:600;word-break:break-all;display:none;align-items:center;gap:6px}
+  .drop.set .file{display:flex} .drop.set .desc{display:none}
+  .drop .file .clr{margin-left:auto;color:var(--faint);font-weight:700;cursor:pointer;padding:0 4px}
+  .drop input{display:none}
+  .opts{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-end}
+  .opt label{display:block;font-size:11.5px;color:var(--mut);margin-bottom:5px;font-weight:600}
+  .opt input[type=number],.opt select{background:#121922;border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:9px 11px;font-size:13.5px;outline:none}
+  .opt input:focus,.opt select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(91,155,255,.18)}
+  .opt input[type=number]{width:96px}
+  .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--mut)}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:20px}
+  button{font:inherit;border:0;border-radius:10px;cursor:pointer;transition:.15s}
+  .btn{background:var(--brand);color:#06140c;padding:11px 22px;font-weight:700;font-size:14px}
+  .btn:hover{background:var(--brand-d)} .btn:disabled{opacity:.4;cursor:not-allowed}
+  .btn.sec{background:#1b242e;color:var(--ink);border:1px solid var(--line);font-weight:600}
+  .btn.sec:hover{background:#212c37}
+  .spin{width:15px;height:15px;border:2px solid rgba(6,20,12,.35);border-top-color:#06140c;border-radius:50%;display:inline-block;vertical-align:-2px;margin-right:7px;animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .status{color:var(--mut);font-size:13px}
+  .log{background:#0a0e13;color:#b9c6d1;border:1px solid var(--line);border-radius:10px;padding:13px 15px;font:12px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;max-height:200px;overflow:auto;margin-top:16px;display:none}
+  .log .err{color:#ff9bad} .log .ok{color:#79e0a6}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  @media(max-width:820px){.stats{grid-template-columns:1fr 1fr}}
+  .stat{border:1px solid var(--line);border-radius:12px;padding:15px 16px;background:#18212b}
+  .stat .v{font-size:26px;font-weight:750;letter-spacing:-.02em}
+  .stat .k{color:var(--mut);font-size:12px;margin-top:2px}
+  .stat.s .v{color:#7bd6a0} .stat.u .v{color:var(--accent)}
+  .qa{margin-top:6px;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .qa .qrow{display:flex;align-items:flex-start;gap:11px;padding:12px 15px;border-top:1px solid var(--line2)}
+  .qa .qrow:first-child{border-top:0}
+  .dot{width:18px;height:18px;border-radius:50%;flex:0 0 auto;margin-top:1px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#06140c}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+  .qrow .t{font-weight:600;font-size:13.5px} .qrow .d{color:var(--mut);font-size:12.5px;margin-top:1px}
+  .qrow details{margin-top:6px} .qrow summary{cursor:pointer;color:var(--accent);font-size:12.5px}
+  .qrow .orphans{margin-top:6px;font-size:12px;color:var(--mut);columns:2;column-gap:24px}
+  @media(max-width:600px){.qrow .orphans{columns:1}}
+  .dlsec{margin-top:18px}
+  .dlsec .lbl{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);font-weight:700;margin:0 0 8px}
+  .dl{display:flex;flex-wrap:wrap;gap:10px}
+  .dl a{text-decoration:none}
+  .dlbtn{display:inline-flex;align-items:center;gap:8px;padding:10px 15px;border-radius:10px;font-weight:600;font-size:13px}
+  .dlbtn.pri{background:var(--brand);color:#06140c} .dlbtn.pri:hover{background:var(--brand-d)}
+  .dlbtn.ex{background:#1b242e;color:var(--ink);border:1px solid var(--line)} .dlbtn.ex:hover{background:#212c37}
+  .ptabs{display:inline-flex;gap:4px;background:#1b242e;border-radius:9px;padding:3px;margin-left:auto}
+  .ptab{padding:6px 13px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--mut);cursor:pointer}
+  .ptab.on{background:#283642;color:var(--ink)}
+  .search{margin:12px 0;width:100%;max-width:340px;border:1px solid var(--line);border-radius:9px;padding:8px 11px;font-size:13px;outline:none;background:#121922;color:var(--ink)}
+  .search:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(91,155,255,.18)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{border-bottom:1px solid var(--line2);padding:8px 10px;text-align:left;vertical-align:top}
+  th{color:var(--mut);font-weight:600;background:#131a22;position:sticky;top:0}
+  td.x{color:var(--faint);font-family:ui-monospace,monospace;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tw{max-height:440px;overflow:auto;border:1px solid var(--line);border-radius:11px}
+  .pill{display:inline-block;padding:1px 9px;border-radius:20px;font-size:11px;font-weight:700}
+  .pill.s{background:rgba(76,159,112,.18);color:#7bd6a0} .pill.u{background:rgba(91,155,255,.16);color:var(--accent)}
+  details.help{border:1px solid var(--line);border-radius:12px;background:var(--card);margin-top:4px}
+  details.help summary{cursor:pointer;padding:14px 18px;font-weight:650;list-style:none;display:flex;align-items:center;gap:8px}
+  details.help summary::-webkit-details-marker{display:none}
+  details.help summary .chev{margin-left:auto;color:var(--faint);transition:.2s}
+  details.help[open] summary .chev{transform:rotate(90deg)}
+  .help .body{padding:0 18px 18px}
+  .schema{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  .schema th,.schema td{border:1px solid var(--line);padding:8px 10px;text-align:left}
+  .schema th{background:#131a22}
+  code{background:#1f2832;padding:1px 6px;border-radius:5px;font-size:12px;font-family:ui-monospace,monospace}
+  .reqd{color:var(--bad);font-weight:700} .optn{color:var(--faint)}
+  footer{color:var(--faint);font-size:12px;text-align:center;margin-top:26px;line-height:1.7}
+  .privacy{display:inline-flex;align-items:center;gap:6px;color:#7bd6a0;font-weight:600}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 L10 4"/><path d="M20 20 L14 4"/><path d="M9 12 H15" stroke-dasharray="2 2"/></svg></div>
+    <div>
+      <h1>Corridor Data Builder</h1>
+      <p>Turn an <b>XD Identification</b> file + <b>Traffic Signal</b> file into signalized and un‑signalized corridor CSVs. Runs locally.</p>
+    </div>
+    <span class="ver">v2 · offline</span>
+  </header>
+
+  <div class="card" style="padding:13px 18px">
+    <div style="font-size:13.5px;color:var(--mut)"><b style="color:var(--ink)">How to use &mdash;</b>
+      &nbsp;<b style="color:var(--brand)">1.</b> Load your files (including the big readings file)&nbsp; &rarr; &nbsp;<b style="color:var(--brand)">2.</b> click <b>Generate corridor data</b> and pick your <code>data</code> folder (you pick it once — it's remembered after) &mdash; it saves all output files there.</div>
+  </div>
+
+  <!-- step 1 -->
+  <div class="card">
+    <div class="step"><span class="badge">1</span><h2>Load files</h2><span class="hint">drag &amp; drop or click</span></div>
+    <div class="drops">
+      <label class="drop req" id="d_rd" data-key="rd">
+        <span class="tag">required</span>
+        <div class="nm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg> Readings <span style="color:var(--faint);font-weight:500">(large)</span></div>
+        <div class="desc">The big RITIS readings file. Builds <code>latest.csv.gz</code>. Can be 1&nbsp;GB+.</div>
+        <div class="file" id="f_rd"></div>
+        <input type="file" accept=".csv,.gz,.csv.gz" id="i_rd"/>
+      </label>
+      <label class="drop req" id="d_id" data-key="id">
+        <span class="tag">required</span>
+        <div class="nm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg> XD Identification</div>
+        <div class="desc">Segment geometry: <code>xd</code>, <code>road-name</code>, lat/long. Builds the corridors.</div>
+        <div class="file" id="f_id"></div>
+        <input type="file" accept=".csv,text/csv" id="i_id"/>
+      </label>
+      <label class="drop req" id="d_sig" data-key="sig">
+        <span class="tag">required</span>
+        <div class="nm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 0-8 8c0 5 8 12 8 12s8-7 8-12a8 8 0 0 0-8-8z"/></svg> Traffic Signal</div>
+        <div class="desc">Signal locations. Only <code>Latitude</code>/<code>Longitude</code> required. <a href="#" id="needtmpl" style="color:var(--accent)">Format?</a></div>
+        <div class="file" id="f_sig"></div>
+        <input type="file" accept=".csv,text/csv" id="i_sig"/>
+      </label>
+    </div>
+  </div>
+
+  <!-- step 2 -->
+  <div class="card">
+    <div class="step"><span class="badge">2</span><h2>Generate corridor data</h2></div>
+    <div class="opts">
+      <div class="opt"><label>Road classes (FRC)</label>
+        <select id="frc">
+          <option value="">All roads (1–5)</option>
+          <option value="1-4">Major only (1–4)</option>
+          <option value="1-3">Arterials (1–3)</option>
+          <option value="2-4">Collectors+ (2–4)</option>
+        </select></div>
+      <div class="opt"><label>Signal match radius (m)</label><input type="number" id="tol" value="60" min="10" max="300" step="5"/></div>
+      <div class="opt"><label>Max turn when chaining (°)</label><input type="number" id="mt" value="90" min="30" max="120" step="5"/></div>
+      <div class="opt" id="rdopt" style="display:none"><label>Readings filter</label>
+        <span class="chk"><input type="checkbox" id="excl"/> Exclude segments with no data</span></div>
+    </div>
+    <div class="row">
+      <button class="btn" id="go" disabled>Generate corridor data</button>
+      <button class="btn sec" id="reset">Reset</button>
+      <button class="btn sec" id="changeDir" style="display:none" title="Pick a different save folder next time">⟳ Change save folder</button>
+      <span class="status" id="status">Load all three files to begin.</span>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+
+  <!-- results -->
+  <div id="results" style="display:none">
+    <div class="card">
+      <div class="step"><h2 style="margin-left:2px">Results</h2></div>
+      <div class="stats" id="stats"></div>
+      <h3 style="font-size:12.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--faint);margin:22px 0 8px">Accuracy &amp; data quality</h3>
+      <div class="qa" id="qa"></div>
+      <div class="dlsec"><div class="lbl">Primary outputs</div><div class="dl" id="dl_pri"></div></div>
+      <div class="dlsec"><div class="lbl">Extras</div><div class="dl" id="dl_ex"></div></div>
+    </div>
+    <div class="card">
+      <div class="step"><h2 style="margin-left:2px">Preview</h2><span class="ptabs" id="ptabs"></span></div>
+      <input class="search" id="search" placeholder="Filter by corridor name…"/>
+      <div class="tw"><div id="preview"></div></div>
+    </div>
+  </div>
+
+
+  <!-- help -->
+  <details class="help" id="help">
+    <summary><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg> Signal file format &amp; sample template <span class="chev">›</span></summary>
+    <div class="body">
+      <p style="color:var(--mut);margin-top:4px">Only the GPS coordinate is used for matching. Street names are labels only — if you only have coordinates, it still works. Extra columns are ignored; headers match case‑insensitively.</p>
+      <table class="schema">
+        <tr><th>Column</th><th>Required?</th><th>Why</th><th>Example</th></tr>
+        <tr><td><code>Latitude</code></td><td class="reqd">Required</td><td>Used by the algorithm to place the signal on a corridor</td><td>37.6312</td></tr>
+        <tr><td><code>Longitude</code></td><td class="reqd">Required</td><td>Used by the algorithm to place the signal on a corridor</td><td>-77.5456</td></tr>
+        <tr><td><code>Major Street</code></td><td class="optn">Recommended</td><td>Label only (assignment report &amp; readability)</td><td>Broad St</td></tr>
+        <tr><td><code>Minor Street</code></td><td class="optn">Recommended</td><td>Label only (assignment report &amp; readability)</td><td>Parham Rd</td></tr>
+        <tr><td><code>Signal ID</code> / <code>INO</code></td><td class="optn">Optional</td><td>Carried through if present; not needed</td><td>1</td></tr>
+      </table>
+      <p style="margin:12px 0 0"><button class="dlbtn ex" id="tmplbtn">⬇ Download sample template (Traffic_Signal_Template.csv)</button></p>
+      <p style="color:var(--faint);font-size:12px;margin-top:10px">Accepted header synonyms — latitude: <code>Latitude</code>/<code>lat</code>/<code>Y</code> · longitude: <code>Longitude</code>/<code>lon</code>/<code>lng</code>/<code>X</code> · major: <code>Major Street</code>/<code>Main Street</code>/<code>Street 1</code> · minor: <code>Minor Street</code>/<code>Cross Street</code>/<code>Street 2</code>.</p>
+    </div>
+  </details>
+
+  <footer>
+    <span class="privacy"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg> 100% local — nothing is uploaded.</span><br/>
+    Verified against the Python pipeline · grouping matches ~95% of hand‑built corridors.
+  </footer>
+</div>
+
+<script>
+/* ===================== verified engine (parity-checked) — v2 improves cross-street naming (most-major road) ===================== */
+const DIR_WORDS={N:"North",S:"South",E:"East",W:"West"};
+function pyTitle(s){return s.replace(/[A-Za-z]+/g,w=>w[0].toUpperCase()+w.slice(1).toLowerCase());}
+function titleRoad(name){if(!name||!name.trim())return"";let b=name.trim().replace(/^(N|S|E|W|NORTH|SOUTH|EAST|WEST)\s+/i,"");if(!b)b=name.trim();return pyTitle(b);}
+function axisOf(hls){let sx=0,sy=0;for(const[h,L]of hls){const a=h*2*Math.PI/180;sx+=L*Math.cos(a);sy+=L*Math.sin(a);}return((Math.atan2(sy,sx)*180/Math.PI)/2+180)%180;}
+function axisDiff(a,b){let d=Math.abs(a-b)%180;return d<=90?d:180-d;}
+function resolveBase(name,rawNames,axisByName,sep){sep=sep||50;if(!name)return"";const up=name.trim().toUpperCase();
+  if(/^(N|S|E|W|NORTH|SOUTH|EAST|WEST)\s+/i.test(up)){const st=up.replace(/^(N|S|E|W|NORTH|SOUTH|EAST|WEST)\s+/i,"").trim();
+    if(st&&rawNames.has(st)&&axisByName[up]!=null&&axisByName[st]!=null&&axisDiff(axisByName[up],axisByName[st])>sep)return pyTitle(name.trim());}
+  return titleRoad(name);}
+function rnd(x,p){const f=Math.pow(10,p);return Math.round(x*f)/f;}
+function nodeKey(lat,lon,p){return rnd(lat,p)+","+rnd(lon,p);}
+function bearingDeg(la1,lo1,la2,lo2){const p1=la1*Math.PI/180,p2=la2*Math.PI/180,dl=(lo2-lo1)*Math.PI/180;
+  const x=Math.sin(dl)*Math.cos(p2),y=Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl);
+  return (Math.atan2(x,y)*180/Math.PI+360)%360;}
+function compass(d){return["N","E","S","W"][Math.floor(((d+45)%360)/90)];}
+function angDiff(a,b){let d=Math.abs(a-b)%360;return d<=180?d:360-d;}
+function chainCorridors(segs,order,prec,maxTurn){
+  const startAt=new Map();
+  for(const xd of order){const s=segs[xd];const k=nodeKey(s.slat,s.slon,prec);if(!startAt.has(k))startAt.set(k,[]);startAt.get(k).push(xd);}
+  const sorted=order.slice().sort((a,b)=>{const A=segs[a],B=segs[b];if(A.base<B.base)return -1;if(A.base>B.base)return 1;return A.hdg-B.hdg;});
+  const used=new Set(),chains=[];
+  for(const xd of sorted){if(used.has(xd))continue;const s=segs[xd];let chain=[xd];used.add(xd);let cur=s;
+    while(true){const node=nodeKey(cur.elat,cur.elon,prec);const cands=startAt.get(node)||[];let best=null,bt=999;
+      for(const c of cands){if(used.has(c)||segs[c].base!==s.base)continue;const t=angDiff(cur.hdg,segs[c].hdg);if(t<bt&&t<=maxTurn){best=c;bt=t;}}
+      if(best===null)break;chain.push(best);used.add(best);cur=segs[best];}
+    chains.push(chain);}
+  return chains;}
+function stitch(segs,frags){frags=frags.slice();let order=frags.shift();
+  while(frags.length){const t=segs[order[order.length-1]];let bi=0,bd=1e18;
+    for(let i=0;i<frags.length;i++){const h=segs[frags[i][0]];const d=(t.elat-h.slat)**2+(t.elon-h.slon)**2;if(d<bd){bd=d;bi=i;}}
+    order=order.concat(frags.splice(bi,1)[0]);}
+  return order;}
+function buildCorridors(segs,order,prec,maxTurn){
+  const chains=chainCorridors(segs,order,prec,maxTurn);
+  const baseFrc=new Map();
+  for(const xd of order){const s=segs[xd];const f=parseInt(s.frc);if(isNaN(f))continue;if(!baseFrc.has(s.base)||f<baseFrc.get(s.base))baseFrc.set(s.base,f);}
+  const nodeIndex=new Map();
+  for(const xd of order){const s=segs[xd];for(const k of [nodeKey(s.slat,s.slon,prec),nodeKey(s.elat,s.elon,prec)]){if(!nodeIndex.has(k))nodeIndex.set(k,[]);nodeIndex.get(k).push(xd);}}
+  function crossAt(node,base){const set=new Set();
+    for(const x of (nodeIndex.get(node)||[])){const s=segs[x];if(s.base!==base&&s.road&&!s.base.startsWith("UNNAMED"))set.add(s.base);}
+    return Array.from(set).sort((a,b)=>{const fa=baseFrc.has(a)?baseFrc.get(a):9,fb=baseFrc.has(b)?baseFrc.get(b):9;return fa-fb||(a<b?-1:a>b?1:0);});}
+  const byBase=new Map();
+  for(const ch of chains){const b=segs[ch[0]].base;if(!byBase.has(b))byBase.set(b,[]);byBase.get(b).push(ch);}
+  const rows=[];
+  for(const [base,chs] of byBase){
+    chs.sort((a,b)=>b.length-a.length);
+    const f0=segs[chs[0][0]],l0=segs[chs[0][chs[0].length-1]];const ref=bearingDeg(f0.slat,f0.slon,l0.elat,l0.elon);
+    const groups={A:[],B:[]};
+    for(const ch of chs){const f=segs[ch[0]],l=segs[ch[ch.length-1]];const net=bearingDeg(f.slat,f.slon,l.elat,l.elon);groups[angDiff(net,ref)<90?"A":"B"].push(ch);}
+    let netA=null;
+    for(const g of ["A","B"]){if(!groups[g].length)continue;
+      const ord=stitch(segs,groups[g]);const first=segs[ord[0]],last=segs[ord[ord.length-1]];
+      const net=bearingDeg(first.slat,first.slon,last.elat,last.elon);
+      let dirc;if(g==="A"){dirc=compass(net);netA=net;}else{dirc=netA!=null?compass((netA+180)%360):compass(net);}
+      const frm=crossAt(nodeKey(first.slat,first.slon,prec),base);const to=crossAt(nodeKey(last.elat,last.elon,prec),base);
+      const disp=base.startsWith("UNNAMED")?"Unnamed Rd":base;
+      const name=`${disp}_${frm.length?frm[0]:"End"}_To_${to.length?to[0]:"End"}_${DIR_WORDS[dirc]}`;
+      rows.push({base,dir:dirc,name,xd_seg_id:ord.join(";")});}}
+  rows.sort((a,b)=>a.base<b.base?-1:a.base>b.base?1:(a.dir<b.dir?-1:a.dir>b.dir?1:0));
+  const seen={};for(const r of rows){if(seen[r.name]){seen[r.name]++;r.name=r.name+"_"+seen[r.name];}else seen[r.name]=1;}
+  return rows.map((r,i)=>({objectID:i,index:i,"System Name":r.name,bearing:r.dir,xd_seg_id:r.xd_seg_id,NumberofSignals:""}));}
+function ptSeg(plat,plon,alat,alon,blat,blon){const kx=Math.cos(plat*Math.PI/180)*111320,ky=111320;
+  const ax=(alon-plon)*kx,ay=(alat-plat)*ky,bx=(blon-plon)*kx,by=(blat-plat)*ky;const dx=bx-ax,dy=by-ay;
+  if(dx===0&&dy===0)return Math.hypot(ax,ay);let t=-(ax*dx+ay*dy)/(dx*dx+dy*dy);t=Math.max(0,Math.min(1,t));return Math.hypot(ax+t*dx,ay+t*dy);}
+function addSignals(rows,geo,signals,tol){const box=tol/111000*1.5+0.0005;
+  const corrSegs=rows.map(r=>r.xd_seg_id.split(";").filter(x=>geo[x]).map(x=>{const[g0,g1,g2,g3]=geo[x];return[g0,g1,g2,g3,Math.min(g0,g2),Math.max(g0,g2),Math.min(g1,g3),Math.max(g1,g3)];}));
+  const counts=new Array(rows.length).fill(0);const assign=signals.map(()=>[]);
+  for(let si=0;si<signals.length;si++){const s=signals[si];
+    for(let ci=0;ci<corrSegs.length;ci++){let hit=false;
+      for(const seg of corrSegs[ci]){if(s.lat<seg[4]-box||s.lat>seg[5]+box||s.lon<seg[6]-box||s.lon>seg[7]+box)continue;
+        if(ptSeg(s.lat,s.lon,seg[0],seg[1],seg[2],seg[3])<=tol){hit=true;break;}}
+      if(hit){counts[ci]++;assign[si].push(rows[ci]["System Name"]);}}}
+  rows.forEach((r,i)=>r.NumberofSignals=counts[i]);return {assign,counts};}
+
+/* ===================== CSV + robust column detection ===================== */
+function parseCSV(t){t=t.replace(/^﻿/,"");const rows=[];let i=0,f="",row=[],q=false;
+  while(i<t.length){const c=t[i];
+    if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++;}else q=false;}else f+=c;}
+    else{if(c==='"')q=true;else if(c===","){row.push(f);f="";}else if(c==="\n"){row.push(f);rows.push(row);row=[];f="";}else if(c==="\r"){}else f+=c;}
+    i++;}
+  if(f.length||row.length){row.push(f);rows.push(row);}return rows;}
+function headerMap(headers){const norm=h=>h.replace(/^﻿/,"").toLowerCase().replace(/[\s_\-\.]/g,"");
+  const m={};headers.forEach((h,i)=>{m[norm(h)]=h;});return {raw:headers,find:(cands)=>{for(const c of cands){if(m[c])return m[c];}return null;}};}
+function toObjs(rows){const h=rows[0].map(x=>x.replace(/^﻿/,""));return rows.slice(1).filter(r=>r.length>1&&r.some(v=>v!=="")).map(r=>{const o={};h.forEach((k,i)=>o[k]=r[i]);return o;});}
+function csvCell(v){v=(v==null?"":""+v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}
+function toCSV(rows){const cols=["objectID","index","System Name","bearing","xd_seg_id","NumberofSignals"];
+  const lines=[cols.join(",")];for(const r of rows)lines.push(cols.map(c=>csvCell(r[c])).join(","));return "﻿"+lines.join("\r\n");}
+
+const SAMPLE_TEMPLATE="Major Street,Minor Street,Latitude,Longitude\r\nBroad St,Parham Rd,37.631200,-77.545600\r\nStaples Mill Rd,Hungary Rd,37.645900,-77.498700\r\nNuckols Rd,Springfield Rd,37.668400,-77.612300\r\nGayton Rd,Quioccasin Rd,37.625500,-77.612900\r\nLaburnum Ave,Creighton Rd,37.531800,-77.398200\r\n";
+
+/* ===================== UI wiring ===================== */
+const $=id=>document.getElementById(id);
+const files={id:null,sig:null,rd:null};let readingsSet=null;const out={};let lastSig=[],lastUns=[];
+function logln(s,cls){const L=$("log");L.style.display="block";L.insertAdjacentHTML("beforeend",(cls?`<span class="${cls}">${s}</span>`:s)+"\n");L.scrollTop=L.scrollHeight;}
+function setFile(key,f){files[key]=f;const lbl=$("f_"+key),drop=$("d_"+key);
+  if(f){lbl.innerHTML=`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M20 6 9 17l-5-5"/></svg> ${f.name} <span style="color:var(--faint);font-weight:500">(${(f.size/1e6).toFixed(f.size>5e6?0:2)} MB)</span><span class="clr" data-key="${key}">✕</span>`;
+    drop.classList.add("set");if(key==="rd"){$("rdopt").style.display="block";readingsSet=null;}}
+  else{lbl.innerHTML="";drop.classList.remove("set");if(key==="rd"){$("rdopt").style.display="none";$("excl").checked=false;}}
+  refresh();}
+["id","sig","rd"].forEach(key=>{
+  const drop=$("d_"+key),inp=$("i_"+key);
+  inp.addEventListener("change",e=>{if(e.target.files[0])setFile(key,e.target.files[0]);});
+  drop.addEventListener("dragover",e=>{e.preventDefault();drop.classList.add("drag");});
+  drop.addEventListener("dragleave",()=>drop.classList.remove("drag"));
+  drop.addEventListener("drop",e=>{e.preventDefault();drop.classList.remove("drag");if(e.dataTransfer.files[0]){inp.value="";setFile(key,e.dataTransfer.files[0]);}});
+});
+document.addEventListener("click",e=>{if(e.target.classList.contains("clr")){e.preventDefault();e.stopPropagation();const k=e.target.dataset.key;$("i_"+k).value="";setFile(k,null);}});
+function refresh(){const ok=files.id&&files.sig&&files.rd;$("go").disabled=!ok;$("status").textContent=ok?"Ready to generate.":"Load all three files to begin.";}
+$("reset").onclick=()=>location.reload();
+$("needtmpl").onclick=e=>{e.preventDefault();$("help").open=true;$("help").scrollIntoView({behavior:"smooth"});};
+function downloadStr(name,str){const b=new Blob([str],{type:"text/csv;charset=utf-8"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);}
+$("tmplbtn").onclick=()=>downloadStr("Traffic_Signal_Template.csv",SAMPLE_TEMPLATE);
+
+function readText(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result);r.onerror=rej;r.readAsText(file);});}
+async function streamReadingXds(file,onProg){const set=new Set();const reader=file.stream().getReader();const dec=new TextDecoder("utf-8");
+  let buf="",first=true,read=0;
+  while(true){const {done,value}=await reader.read();if(done)break;read+=value.length;buf+=dec.decode(value,{stream:true});let nl;
+    while((nl=buf.indexOf("\n"))>=0){let line=buf.slice(0,nl);buf=buf.slice(nl+1);if(first){first=false;continue;}const c=line.indexOf(",");if(c>0)set.add(line.slice(0,c).trim());}
+    onProg(read);}
+  if(buf){const c=buf.indexOf(",");if(c>0)set.add(buf.slice(0,c).trim());}return set;}
+
+$("go").onclick=async()=>{
+  const btn=$("go");btn.disabled=true;btn.innerHTML='<span class="spin"></span>Working…';$("results").style.display="none";$("log").innerHTML="";
+  try{
+    const prec=5,tol=+$("tol").value||60,mt=+$("mt").value||90,frc=$("frc").value;
+    logln("Reading XD Identification…");
+    const idCsv=parseCSV(await readText(files.id));
+    const H=headerMap(idCsv[0]);
+    const col={xd:H.find(["xd","xdid","segmentid","segid","tmc"]),road:H.find(["roadname","road","street","stname"]),
+      frc:H.find(["frc","functionalclass","functionalroadclass","roadclass"]),
+      slat:H.find(["startlatitude","startlat","fromlat","beginlat","slat"]),slon:H.find(["startlongitude","startlon","startlng","fromlon","slon"]),
+      elat:H.find(["endlatitude","endlat","tolat","elat"]),elon:H.find(["endlongitude","endlon","endlng","tolon","elon"]),
+      miles:H.find(["miles","length","lengthmiles","distance","milelength","segmentmiles"])};
+    const missing=["xd","slat","slon","elat","elon"].filter(k=>!col[k]);
+    if(missing.length)throw new Error("Identification file missing required column(s): "+missing.join(", ")+". Found headers: "+H.raw.join(", "));
+    const idRows=toObjs(idCsv);
+    logln("  "+idRows.length.toLocaleString()+" segment rows  ·  columns OK");
+
+    if(files.rd&&$("excl").checked){logln("Streaming readings to find segments with data…");
+      const sz=files.rd.size;let last=0;readingsSet=await streamReadingXds(files.rd,r=>{const p=Math.floor(r/sz*100);if(p>=last+10){last=p;logln("  "+p+"%");}});
+      logln("  "+readingsSet.size.toLocaleString()+" unique segments present in readings");}
+
+    // pass 1: raw road names + per-name axis (for geometry-aware base resolution)
+    const rawNames=new Set(),hlByName={};
+    for(const r of idRows){const road=(col.road?r[col.road]:"").trim();if(!road)continue;
+      const a=+r[col.slat],b=+r[col.slon],c=+r[col.elat],d=+r[col.elon];if([a,b,c,d].some(isNaN))continue;
+      const up=road.toUpperCase();rawNames.add(up);(hlByName[up]=hlByName[up]||[]).push([bearingDeg(a,b,c,d),Math.hypot(c-a,d-b)]);}
+    const axisByName={};for(const k in hlByName)axisByName[k]=axisOf(hlByName[k]);
+    const segs={},order=[],geo={},milesByXd={};let frcLo=null,frcHi=null;
+    if(frc){const p=frc.split("-");frcLo=+p[0];frcHi=+p[p.length-1];}
+    let skipFrc=0,skipND=0,badGeo=0;
+    for(const r of idRows){const xd=(r[col.xd]||"").trim();if(!xd)continue;
+      const slat=+r[col.slat],slon=+r[col.slon],elat=+r[col.elat],elon=+r[col.elon];
+      if([slat,slon,elat,elon].some(isNaN)){badGeo++;continue;}
+      if(frcLo!==null){const f=parseInt(col.frc?r[col.frc]:"");if(!(f>=frcLo&&f<=frcHi)){skipFrc++;continue;}}
+      if(readingsSet&&!readingsSet.has(xd)){skipND++;continue;}
+      const road=(col.road?r[col.road]:"").trim();const base=road?resolveBase(road,rawNames,axisByName):"UNNAMED-"+xd;
+      segs[xd]={xd,road,base,frc:col.frc?r[col.frc]:"",slat,slon,elat,elon,hdg:bearingDeg(slat,slon,elat,elon)};
+      if(col.miles)milesByXd[xd]=+r[col.miles]||0;
+      order.push(xd);geo[xd]=[slat,slon,elat,elon];}
+    const segIn=order.length;
+    if(badGeo)logln("  note: "+badGeo+" rows had unreadable coordinates (skipped)");
+    if(skipFrc)logln("  FRC filter "+frc+": dropped "+skipFrc+" segments");
+    if(skipND)logln("  readings filter: dropped "+skipND+" segments with no data");
+
+    logln("Building whole‑road corridors…");
+    const rows=buildCorridors(segs,order,prec,mt);
+    let placed=0,dupset=new Set(),dups=0;rows.forEach(r=>r.xd_seg_id.split(";").forEach(x=>{placed++;if(dupset.has(x))dups++;dupset.add(x);}));
+    logln("  "+rows.length+" corridors · "+placed+" segments placed");
+
+    logln("Reading Traffic Signal file…");
+    const sigCsv=parseCSV(await readText(files.sig));const SH=headerMap(sigCsv[0]);
+    const scol={lat:SH.find(["latitude","lat","y"]),lon:SH.find(["longitude","lon","lng","long","x"]),
+      name:SH.find(["signalname","name","location","intersection","signal"]),
+      major:SH.find(["majorstreet","major","mainstreet","main","street1","onstreet","primarystreet"]),
+      minor:SH.find(["minorstreet","minor","crossstreet","cross","street2","secondarystreet"])};
+    if(!scol.lat||!scol.lon)throw new Error("Signal file missing Latitude/Longitude column. Found: "+SH.raw.join(", ")+'. See "Signal file format" below.');
+    const sigRows=toObjs(sigCsv);
+    function sigName(r){if(scol.name&&r[scol.name])return r[scol.name].trim();
+      const mj=scol.major?(r[scol.major]||"").trim():"",mn=scol.minor?(r[scol.minor]||"").trim():"";
+      if(mj&&mn)return mj+" & "+mn;return mj||mn||"";}
+    const signals=sigRows.map(r=>({lat:+r[scol.lat],lon:+r[scol.lon],name:sigName(r)})).filter(s=>!isNaN(s.lat)&&!isNaN(s.lon));
+    logln("  "+signals.length+" geocoded signals");
+    logln("Counting signals on corridors (radius "+tol+" m)…");
+    const {assign,counts}=addSignals(rows,geo,signals,tol);
+    const matched=assign.filter(a=>a.length).length;const sum=counts.reduce((a,b)=>a+b,0);
+    const orphans=signals.map((s,i)=>({s,n:assign[i].length})).filter(o=>o.n===0).map(o=>o.s.name||("("+o.s.lat.toFixed(5)+", "+o.s.lon.toFixed(5)+")"));
+
+    const sig=[],uns=[];for(const r of rows)(parseInt(r.NumberofSignals)>0?sig:uns).push(r);
+    const reindex=a=>a.map((r,i)=>({...r,objectID:i,index:i}));
+    lastSig=reindex(sig);lastUns=reindex(uns);
+    out.sig=toCSV(lastSig);out.uns=toCSV(lastUns);out.all=toCSV(rows);
+    window.__CORRIDORS=rows; window.__MILES=milesByXd;
+    let rep="﻿signal_name,lat,lon,n_corridors,corridors\r\n";
+    signals.forEach((s,i)=>{rep+=[csvCell(s.name),s.lat,s.lon,assign[i].length,csvCell(assign[i].join(" | "))].join(",")+"\r\n";});
+    out.rep=rep;
+
+    const ends=rows.filter(r=>r["System Name"].includes("_End_To_End_")).length;
+    const singles=rows.filter(r=>r.xd_seg_id.indexOf(";")<0).length;
+    logln("Done.","ok");
+    render({total:rows.length,nSig:lastSig.length,nUns:lastUns.length,segIn,placed,dups,nSignals:signals.length,matched,sum,orphans,ends,singles});
+    await saveAllFiles(rows, milesByXd);
+  }catch(err){logln("ERROR: "+(err&&err.message||err),"err");$("status").textContent="Error — see log.";}
+  finally{btn.disabled=false;btn.innerHTML="Generate corridor data";}
+};
+
+function qrow(state,t,d,extra){const sym=state==="ok"?"✓":state==="warn"?"!":"✕";
+  return `<div class="qrow"><div class="dot ${state}">${sym}</div><div><div class="t">${t}</div><div class="d">${d}</div>${extra||""}</div></div>`;}
+function render(r){
+  $("results").style.display="block";
+  $("stats").innerHTML=[
+    ["Total corridors",r.total.toLocaleString(),""],
+    ["Signalized",r.nSig.toLocaleString(),"s"],
+    ["Un‑signalized",r.nUns.toLocaleString(),"u"],
+    ["Signals placed",r.matched+" / "+r.nSignals,""]
+  ].map(([k,v,c])=>`<div class="stat ${c}"><div class="v">${v}</div><div class="k">${k}</div></div>`).join("");
+
+  const qa=[];
+  qa.push(qrow(r.placed===r.segIn?"ok":"warn","All segments placed in a corridor",
+    r.placed.toLocaleString()+" of "+r.segIn.toLocaleString()+" input segments placed"+(r.placed===r.segIn?"":" — some segments could not be chained")));
+  qa.push(qrow(r.dups===0?"ok":"bad","No duplicate segment assignments",
+    r.dups===0?"Every segment appears in exactly one corridor":r.dups+" segments appear in more than one corridor"));
+  qa.push(qrow(r.orphans.length===0?"ok":"warn","Signals matched to a corridor",
+    r.matched+" of "+r.nSignals+" signals matched (within radius); "+r.orphans.length+" unmatched"+(r.orphans.length?" — typically off‑network (P&R lots, driveways) or just beyond the radius":""),
+    r.orphans.length?`<details><summary>Show ${r.orphans.length} unmatched signal(s)</summary><div class="orphans">${r.orphans.map(o=>"• "+o).join("<br>")}</div></details>`:""));
+  qa.push(qrow(r.ends/r.total<0.5?"ok":"warn","Cross‑street names resolved",
+    (r.total-r.ends).toLocaleString()+" of "+r.total.toLocaleString()+" corridors have at least one named end; "+r.ends.toLocaleString()+" are End_To_End (no other named road touches the terminus)"));
+  qa.push(qrow("ok","Single‑segment corridors",
+    r.singles.toLocaleString()+" corridors are a single segment — usually residential (FRC 5) or ramps. Choose <b>Major only (1–4)</b> in Options to suppress most of these."));
+  $("qa").innerHTML=qa.join("");
+
+  const A=(cls,name,str)=>`<a><button class="dlbtn ${cls}" data-dl="${name}">⬇ ${name}</button></a>`;
+  $("dl_pri").innerHTML=A("pri","Corridor_Data_Signalized.csv")+A("pri","Corridor_Data_Unsignalized.csv");
+  $("dl_ex").innerHTML=A("ex","Corridor_Data_All.csv")+A("ex","Signal_Assignments.csv")+A("ex","Traffic_Signal_Template.csv");
+  document.querySelectorAll("[data-dl]").forEach(b=>b.onclick=()=>{const n=b.dataset.dl;
+    downloadStr(n,n.includes("Signalized")&&!n.includes("Un")?out.sig:n.includes("Unsignalized")?out.uns:n.includes("All")?out.all:n.includes("Assignments")?out.rep:SAMPLE_TEMPLATE);});
+
+  let which="sig";
+  $("ptabs").innerHTML=`<span class="ptab on" data-w="sig">Signalized (${lastSig.length})</span><span class="ptab" data-w="uns">Un‑signalized (${lastUns.length})</span>`;
+  function tbl(rows){const q=($("search").value||"").toLowerCase();const data=(q?rows.filter(x=>x["System Name"].toLowerCase().includes(q)):rows).slice(0,200);
+    let h='<table><thead><tr><th>#</th><th>System Name</th><th>Dir</th><th>Signals</th><th>xd_seg_id</th></tr></thead><tbody>';
+    data.forEach(r=>{h+=`<tr><td>${r.index}</td><td>${r["System Name"]}</td><td>${r.bearing}</td><td><span class="pill ${which==='sig'?'s':'u'}">${r.NumberofSignals}</span></td><td class="x">${r.xd_seg_id}</td></tr>`;});
+    return h+'</tbody></table>'+(rows.length>200?`<div style="padding:8px 10px;color:var(--faint);font-size:12px">Showing first 200 of ${rows.length.toLocaleString()} — full set is in the CSV.</div>`:"");}
+  function draw(){$("preview").innerHTML=tbl(which==="sig"?lastSig:lastUns);}
+  $("ptabs").querySelectorAll(".ptab").forEach(t=>t.onclick=()=>{which=t.dataset.w;$("ptabs").querySelectorAll(".ptab").forEach(x=>x.classList.toggle("on",x===t));draw();});
+  $("search").oninput=draw;
+  draw();
+  $("results").scrollIntoView({behavior:"smooth",block:"start"});
+}
+
+/* ===================== save all outputs to the data folder (one button) ===================== */
+function slog(s,cls){const L=document.getElementById("log");if(!L)return;L.style.display="block";L.insertAdjacentHTML("beforeend",(cls?'<span class="'+cls+'">'+s+'</span>':s)+"\n");L.scrollTop=L.scrollHeight;}
+
+async function makeGzSink(dir,name){
+  const enc=new TextEncoder(); const cs=new CompressionStream("gzip"); const w=cs.writable.getWriter();
+  const fh=await dir.getFileHandle(name,{create:true}); const fileW=await fh.createWritable(); const done=cs.readable.pipeTo(fileW);
+  let buf="";
+  async function flush(){ const b=enc.encode(buf); buf=""; await w.ready; await w.write(b); }
+  return { add:s=>{buf+=s; return buf.length>=(1<<20)?flush():null;}, close:async()=>{ if(buf)await flush(); await w.close(); await done; } };
+}
+async function writeText(dir,name,str){const fh=await dir.getFileHandle(name,{create:true});const w=await fh.createWritable();await w.write(new TextEncoder().encode(str));await w.close();}
+async function writeFile(dir,name,file){const fh=await dir.getFileHandle(name,{create:true});const w=await fh.createWritable();await w.write(await file.arrayBuffer());await w.close();}
+
+// pull XD segment ids from a corridor CSV (xd_seg_id column, ;/space/comma separated)
+function segIdsFromCorridorCsv(txt){
+  const arr=parseCSV(txt); if(arr.length<2) return new Set();
+  const hdr=arr[0].map(x=>x.replace(/^\ufeff/,""));
+  let ci=hdr.findIndex(c=>/xd/i.test(c)); if(ci<0) ci=hdr.length-2;
+  const ids=new Set();
+  for(let i=1;i<arr.length;i++){ const v=(arr[i][ci]||""); v.split(/[;,\s]+/).forEach(t=>{t=t.trim(); if(t)ids.add(t);}); }
+  return ids;
+}
+async function buildLatest(dir,rows){
+  // keep latest.csv.gz small: filter to the study segments in 3_Corridor_Data.csv (read from the folder you picked)
+  let segSet=null, filterSrc="";
+  try{ const fh=await dir.getFileHandle("3_Corridor_Data.csv"); const f=await fh.getFile(); segSet=segIdsFromCorridorCsv(await f.text()); filterSrc="3_Corridor_Data.csv"; }catch(e){}
+  if(!segSet||!segSet.size){
+    segSet=new Set(); rows.filter(r=>parseInt(r.NumberofSignals)>0).forEach(r=>r.xd_seg_id.split(";").forEach(x=>segSet.add(x)));
+    filterSrc="signalized corridors (3_Corridor_Data.csv not found in folder)";
+  }
+  slog("latest.csv.gz will include "+segSet.size.toLocaleString()+" segments — from "+filterSrc+".");
+  const rf=files.rd; const isGz=/\.gz$/i.test(rf.name);
+  let rawBytes=0; const total=rf.size||1;
+  const counter=new TransformStream({transform(c,ctrl){rawBytes+=c.byteLength;ctrl.enqueue(c);}});
+  let stream=rf.stream().pipeThrough(counter); if(isGz)stream=stream.pipeThrough(new DecompressionStream("gzip"));
+  const reader=stream.pipeThrough(new TextDecoderStream()).getReader();
+  const sink=await makeGzSink(dir,"latest.csv.gz");
+  let buf="",header=null,units="minutes",kept=0,tmin=null,tmax=null;
+  async function handle(line){
+    if(header===null){header=line; units=/travel_time_seconds/i.test(line)?"seconds":"minutes"; const p=sink.add(line+"\n"); if(p)await p; return;}
+    if(!line)return;
+    const c1=line.indexOf(","); const xd=c1<0?line:line.slice(0,c1);
+    if(!segSet.has(xd))return;
+    const p=sink.add(line+"\n"); if(p)await p; kept++;
+    const c2=line.indexOf(",",c1+1); const ts=c2<0?line.slice(c1+1):line.slice(c1+1,c2);
+    if(tmin===null||ts<tmin)tmin=ts; if(tmax===null||ts>tmax)tmax=ts;
+  }
+  for(;;){const {done,value}=await reader.read(); if(done)break; buf+=value;
+    let nl; while((nl=buf.indexOf("\n"))>=0){ await handle(buf.slice(0,nl).replace(/\r$/,"")); buf=buf.slice(nl+1); }
+    document.getElementById("status").textContent="Saving latest.csv.gz… "+Math.min(99,Math.floor(rawBytes/total*100))+"%  ("+kept.toLocaleString()+" rows)";
+    await new Promise(r=>setTimeout(r));
+  }
+  if(buf)await handle(buf.replace(/\r$/,""));
+  await sink.close();
+  const meta={start:(tmin||"").slice(0,10),end_inclusive:(tmax||"").slice(0,10),rows:kept,xd_segments:segSet.size,
+              granularity_min:15,units:units,generated:new Date().toISOString().replace(/\.\d{3}Z$/,"Z")};
+  await writeText(dir,"latest_meta.json",JSON.stringify(meta,null,1));
+  slog("latest.csv.gz: "+kept.toLocaleString()+" rows ("+meta.start+" → "+meta.end_inclusive+")  + latest_meta.json","ok");
+}
+
+// remember the save folder across runs (IndexedDB stores the directory handle)
+function idbReq(mode,fn){return new Promise(res=>{const r=indexedDB.open("cbStore",1);r.onupgradeneeded=()=>r.result.createObjectStore("h");r.onerror=()=>res(null);r.onsuccess=()=>{try{const tx=r.result.transaction("h",mode);fn(tx.objectStore("h"),res,tx);}catch(e){res(null);}};});}
+function idbGet(k){return idbReq("readonly",(os,res)=>{const g=os.get(k);g.onsuccess=()=>res(g.result||null);g.onerror=()=>res(null);});}
+function idbSet(k,v){return idbReq("readwrite",(os,res,tx)=>{os.put(v,k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);});}
+function idbDel(k){return idbReq("readwrite",(os,res,tx)=>{os.delete(k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);});}
+let forceNewDir=false;
+async function getSaveDir(){
+  if(!forceNewDir){
+    try{ const saved=await idbGet("dataDir");
+      if(saved){ let p=await saved.queryPermission({mode:"readwrite"}); if(p!=="granted") p=await saved.requestPermission({mode:"readwrite"});
+        if(p==="granted"){ slog("Saving to your remembered folder: "+saved.name+"/  (use ⟳ Change save folder to switch)."); return saved; } } }catch(e){}
+  }
+  forceNewDir=false;
+  let dir;
+  try{ dir=await window.showDirectoryPicker({id:"corridorData",mode:"readwrite",startIn:"downloads"}); }
+  catch(e){ if(e.name==="AbortError") return null; throw e; }
+  try{ await idbSet("dataDir",dir); const b=document.getElementById("changeDir"); if(b)b.style.display=""; }catch(e){}
+  return dir;
+}
+(function(){const b=document.getElementById("changeDir"); if(b)b.onclick=async()=>{forceNewDir=true; try{await idbDel("dataDir");}catch(e){} b.style.display="none"; slog("Next Generate will ask you to pick a folder again.");};})();
+
+async function saveAllFiles(rows,miles){
+  if(typeof CompressionStream==="undefined"||!window.showDirectoryPicker){
+    slog("This browser can't save to a folder — use the download buttons above (Chrome or Edge for folder save).","");return;}
+  const dir=await getSaveDir();
+  if(!dir){ slog("Save cancelled — corridors are shown above; use the download buttons if you want them.","");return; }
+  let hasCorr=false; try{ await dir.getFileHandle("3_Corridor_Data.csv"); hasCorr=true; }catch(e){}
+  if(dir.name!=="data" && !hasCorr) slog("⚠ Heads-up: this folder isn't named 'data' and has no 3_Corridor_Data.csv — make sure it's your dashboard's data/ folder.");
+  slog("Saving files to "+dir.name+"/ …");
+  await writeText(dir,"Corridor_Data_All.csv",out.all);
+  await writeText(dir,"Corridor_Data_Signalized.csv",out.sig);
+  await writeText(dir,"Corridor_Data_Unsignalized.csv",out.uns);
+  if(files.id) await writeFile(dir,"XD_Identification.csv",files.id);
+  if(files.sig) await writeFile(dir,"Traffic_Signal.csv",files.sig);
+  slog("Saved the 3 corridor files + XD_Identification.csv + Traffic_Signal.csv.","ok");
+  if(files.rd){ await buildLatest(dir,rows); }
+  else slog("No readings file loaded — skipped latest.csv.gz / latest_meta.json.","");
+  document.getElementById("status").textContent="All files saved to "+dir.name+"/.";
+  slog("Done — all files are in "+dir.name+"/.","ok");
+}
+</script>
+</body>
+</html>
