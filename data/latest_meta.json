@@ -1,0 +1,9 @@
+{
+ "start": "2026-06-15",
+ "end_inclusive": "2026-06-15",
+ "rows": 32721,
+ "xd_segments": 587,
+ "granularity_min": 15,
+ "units": "minutes",
+ "generated": "2026-06-15T17:52:48Z"
+}
