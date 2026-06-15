@@ -537,11 +537,28 @@ function idbGet(k){return idbReq("readonly",(os,res)=>{const g=os.get(k);g.onsuc
 function idbSet(k,v){return idbReq("readwrite",(os,res,tx)=>{os.put(v,k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);});}
 function idbDel(k){return idbReq("readwrite",(os,res,tx)=>{os.delete(k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);});}
 let forceNewDir=false;
+// A granted permission does NOT guarantee the folder still exists — it may have been
+// moved, renamed, or deleted since it was remembered. Probe it for real (create+remove a
+// tiny temp file) so a dead handle never crashes the save mid-write.
+async function dirIsUsable(dir){
+  try{
+    const probe=".__cb_write_test__";
+    const fh=await dir.getFileHandle(probe,{create:true});
+    const w=await fh.createWritable(); await w.close();
+    try{ await dir.removeEntry(probe); }catch(e){}
+    return true;
+  }catch(e){ return false; }
+}
 async function getSaveDir(){
   if(!forceNewDir){
     try{ const saved=await idbGet("dataDir");
       if(saved){ let p=await saved.queryPermission({mode:"readwrite"}); if(p!=="granted") p=await saved.requestPermission({mode:"readwrite"});
-        if(p==="granted"){ slog("Saving to your remembered folder: "+saved.name+"/  (use ⟳ Change save folder to switch)."); return saved; } } }catch(e){}
+        if(p==="granted"){
+          if(await dirIsUsable(saved)){ slog("Saving to your remembered folder: "+saved.name+"/  (use ⟳ Change save folder to switch)."); return saved; }
+          slog("⚠ The remembered folder \""+saved.name+"/\" can't be found anymore (moved, renamed, or deleted) — please pick your save folder again.");
+          try{ await idbDel("dataDir"); }catch(e){}
+        }
+      } }catch(e){}
   }
   forceNewDir=false;
   let dir;
@@ -552,11 +569,8 @@ async function getSaveDir(){
 }
 (function(){const b=document.getElementById("changeDir"); if(b)b.onclick=async()=>{forceNewDir=true; try{await idbDel("dataDir");}catch(e){} b.style.display="none"; slog("Next Generate will ask you to pick a folder again.");};})();
 
-async function saveAllFiles(rows,miles){
-  if(typeof CompressionStream==="undefined"||!window.showDirectoryPicker){
-    slog("This browser can't save to a folder — use the download buttons above (Chrome or Edge for folder save).","");return;}
-  const dir=await getSaveDir();
-  if(!dir){ slog("Save cancelled — corridors are shown above; use the download buttons if you want them.","");return; }
+// Write every output into whichever folder was picked — works with any folder name.
+async function writeAll(dir,rows){
   let hasCorr=false; try{ await dir.getFileHandle("3_Corridor_Data.csv"); hasCorr=true; }catch(e){}
   if(dir.name!=="data" && !hasCorr) slog("⚠ Heads-up: this folder isn't named 'data' and has no 3_Corridor_Data.csv — make sure it's your dashboard's data/ folder.");
   slog("Saving files to "+dir.name+"/ …");
@@ -570,6 +584,26 @@ async function saveAllFiles(rows,miles){
   else slog("No readings file loaded — skipped latest.csv.gz / latest_meta.json.","");
   document.getElementById("status").textContent="All files saved to "+dir.name+"/.";
   slog("Done — all files are in "+dir.name+"/.","ok");
+}
+async function saveAllFiles(rows,miles){
+  if(typeof CompressionStream==="undefined"||!window.showDirectoryPicker){
+    slog("This browser can't save to a folder — use the download buttons above (Chrome or Edge for folder save).","");return;}
+  let dir=await getSaveDir();
+  if(!dir){ slog("Save cancelled — corridors are shown above; use the download buttons if you want them.","");return; }
+  try{
+    await writeAll(dir,rows);
+  }catch(e){
+    // Folder vanished mid-save (e.g. unplugged drive, deleted/renamed dir) — drop the
+    // stale handle and let the user pick a fresh folder, then write again.
+    if(e&&e.name==="NotFoundError"){
+      slog("⚠ The folder \""+dir.name+"/\" became unavailable during save (moved, renamed, or deleted). Pick your save folder again.");
+      try{ await idbDel("dataDir"); }catch(e2){}
+      forceNewDir=true;
+      dir=await getSaveDir();
+      if(!dir){ slog("Save cancelled — use the download buttons if you want the files.","");return; }
+      await writeAll(dir,rows);
+    } else { throw e; }
+  }
 }
 </script>
 </body>
