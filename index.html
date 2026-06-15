@@ -3670,12 +3670,12 @@ function buildBeforeAfterPDF(sel,w,scope){
       return;
     }
     statGrid([
-      [fmt1(c.B.speed.mean)+' → '+fmt1(c.A.speed.mean),'Speed mph before→after'],
-      [fmt(c.B.ttMean,2)+' → '+fmt(c.A.ttMean,2),'Travel time min'],
-      [fmt1(c.B.normDelay)+' → '+fmt1(c.A.normDelay),'Delay s/int'],
-      [fmt(c.B.normIQR,3)+' → '+fmt(c.A.normIQR,3),'IQR min/int'],
-      [fmt(c.B.tti,2)+' → '+fmt(c.A.tti,2),'Travel Time Index'],
-      [fmt(c.B.pti,2)+' → '+fmt(c.A.pti,2),'Planning Time Index'],
+      [fmt1(c.B.speed.mean)+' to '+fmt1(c.A.speed.mean),'Speed mph before/after'],
+      [fmt(c.B.ttMean,2)+' to '+fmt(c.A.ttMean,2),'Travel time min'],
+      [fmt1(c.B.normDelay)+' to '+fmt1(c.A.normDelay),'Delay s/int'],
+      [fmt(c.B.normIQR,3)+' to '+fmt(c.A.normIQR,3),'IQR min/int'],
+      [fmt(c.B.tti,2)+' to '+fmt(c.A.tti,2),'Travel Time Index'],
+      [fmt(c.B.pti,2)+' to '+fmt(c.A.pti,2),'Planning Time Index'],
       [c.B.nObs.toLocaleString(),'Before intervals'],
       [c.A.nObs.toLocaleString(),'After intervals']
     ]);
