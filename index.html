@@ -411,6 +411,11 @@
   .sig-toggle input:focus-visible + .sig-track{outline:2px solid var(--blue);outline-offset:2px}
   .sig-toggle-lab{font-size:12.5px;font-weight:800;color:var(--ink);min-width:20px}
   #corridorMap{height:580px;border-radius:12px;border:1px solid var(--line);overflow:hidden;z-index:1}
+  #corridorMap.sel-drawing{cursor:crosshair}
+  .map-sel-controls{background:#f6f3fe;border:1px solid #e2d8fb;border-radius:10px;padding:8px 12px}
+  #selInfo{display:none;align-items:center;gap:10px;flex-wrap:wrap}
+  #selInfo .selnum{width:62px;padding:4px 7px;border:1.5px solid var(--line);border-radius:7px;font-family:inherit;font-size:12.5px;font-weight:600}
+  .sel-draw-btn.active{background:#7c3aed;color:#fff;border-color:#7c3aed}
   #corridorMap:fullscreen{height:100vh;border-radius:0}
   .map-foot{display:flex;justify-content:flex-end;margin-top:10px}
   .map-fs-exit{position:absolute;top:14px;right:14px;z-index:1200;display:none;
@@ -907,6 +912,21 @@
         </span>
         <span class="sig-count" id="sigCount"></span>
       </div>
+      <div class="map-controls map-sel-controls noprint" id="selControls">
+        <span class="sig-title">✏️ Targeted segment selection</span>
+        <button class="btn-sm sel-draw-btn" id="selDrawBtn" onclick="toggleDrawSelect()" title="Draw a shape around the segments you want to study">✏️ Draw selection</button>
+        <button class="btn-sm" id="selFinishBtn" onclick="finishDrawSelect()" style="display:none">✓ Finish</button>
+        <button class="btn-sm" id="selCancelBtn" onclick="cancelDrawSelect()" style="display:none">✕ Cancel</button>
+        <span class="sig-count" id="selHint"></span>
+        <span id="selInfo">
+          <b id="selSegCount"></b>
+          <label class="map-cby">Signals
+            <input type="number" id="selSignals" class="selnum" min="1" step="1" onchange="onSelSignals()" title="Signalized intersections inside the selection — edit to override">
+          </label>
+          <button class="btn-sm" onclick="analyzeSelection()">Open in Explore →</button>
+          <button class="btn-sm" onclick="clearSelectionSystem(true)" title="Remove the custom selection">Clear selection</button>
+        </span>
+      </div>
       <div id="mapLegend" class="map-legend" style="margin-bottom:10px"></div>
       <div id="corridorMap"></div>
       <div class="map-foot noprint"><button class="btn-sm" onclick="mapFullscreen()">⛶ Fullscreen map</button></div>
@@ -1182,6 +1202,7 @@ const VIEW_META={
 };
 function setView(name){
   if(name!=='upload' && !state.systems)name='upload';          // result views locked until processed
+  if(name!=='map' && state.draw && state.draw.active){ try{cancelDrawSelect();}catch(e){} }  // don't leave the map mid-draw
   document.querySelectorAll('[data-view]').forEach(el=>{
     el.classList.toggle('hidden', !el.dataset.view.split(' ').includes(name));
   });
@@ -1194,7 +1215,7 @@ function setView(name){
   if(name==='explore'){ buildPicker('cmpPick'); buildPicker('drillPick'); buildPicker('speedPick'); drawDrilldown(); renderSpeed(); }
   if(name==='reports'){ buildPicker('rptPick'); updateRptScope(); }
   if(name==='ba'){ buildPicker('baPick'); baInitDates(); updateBAScope(); }
-  if(name==='map'){ setTimeout(()=>{ if(state.map)state.map.invalidateSize(); renderMap(); }, 60); }
+  if(name==='map'){ setTimeout(()=>{ if(state.map)state.map.invalidateSize(); renderMap(); renderSelectionInfo(); drawSelectionOverlay(); }, 60); }
 }
 // reflect data-loaded state in the sidebar + topbar status
 function railState(){
@@ -1285,12 +1306,13 @@ function handleFile(n,f){
   }
   if(n===2){
     Papa.parse(f,{header:true,skipEmptyLines:true,complete:res=>{
-      const miles={},roads={},geo={};let cnt=0;
+      const miles={},roads={},geo={},bear={};let cnt=0;
       const cols=res.meta.fields.map(c=>c.trim().toLowerCase());
       const col=n=>{const i=cols.findIndex(c=>c===n);return i>=0?res.meta.fields[i]:null;};
       const xdCol=res.meta.fields[cols.findIndex(c=>c==='xd'||c==='xd_id')];
       const miCol=res.meta.fields[cols.findIndex(c=>c==='miles')];
       const rdCol=res.meta.fields[cols.findIndex(c=>c==='road-name'||c==='road name'||c==='roadname'||c==='road')];
+      const beC=col('bearing')||col('direction');
       const slaC=col('start_latitude'),sloC=col('start_longitude'),elaC=col('end_latitude'),eloC=col('end_longitude');
       const hasGeo=slaC&&sloC&&elaC&&eloC;
       if(!xdCol||!miCol){setStatus(2,'✗ Could not find "xd" and "miles" columns — is this the XD Identification file?','err');return;}
@@ -1299,13 +1321,14 @@ function handleFile(n,f){
         if(id&&isFinite(m)){
           miles[id]=m;cnt++;
           if(rdCol){const rd=String(r[rdCol]||'').trim();if(rd)roads[id]=rd;}
+          if(beC){const bv=normBearing(r[beC]);if(bv)bear[id]=bv;}   // per-segment travel direction (for polygon selection)
           if(hasGeo){
             const a=parseFloat(r[slaC]),b=parseFloat(r[sloC]),c=parseFloat(r[elaC]),d=parseFloat(r[eloC]);
             if(isFinite(a)&&isFinite(b)&&isFinite(c)&&isFinite(d))geo[id]=[a,b,c,d];
           }
         }
       });
-      state.segMiles=miles;state.segRoads=roads;state.segGeo=geo;
+      state.segMiles=miles;state.segRoads=roads;state.segGeo=geo;state.segBearing=bear;
       setStatus(2,`✓ ${f.name}\n${cnt} XD segments with distances`+(Object.keys(geo).length?` · ${Object.keys(geo).length} with coordinates`:''),'ok');
     },error:err=>setStatus(2,'✗ '+err.message,'err')});
     return;
@@ -1365,15 +1388,105 @@ function parseTs(s){
   return v;
 }
 function inNight(h,s,e){return s<=e?(h>=s&&h<e):(h>=s||h<e);}
+// normalize a free-text bearing/direction ("Eastbound","WB","S",…) to one of EB/WB/NB/SB ('' if unknown)
+function normBearing(v){const c=String(v==null?'':v).trim().toUpperCase().charAt(0);return c==='E'?'EB':c==='W'?'WB':c==='N'?'NB':c==='S'?'SB':'';}
 
 /* ---------- processing ---------- */
 const progFill=document.getElementById('progFill'),progLabel=document.getElementById('progLabel');
 document.getElementById('processBtn').addEventListener('click',processData);
 
+/* Shared probe-file reader. Streams `file`, routing each matched row into the buckets of the
+   corridor(s) that own its segment (via `corrByIdx`) and into the sink maps. The per-row math
+   lives here once so both the initial processData and the polygon-selection rebuild stay in sync.
+   `stats` carries the running counters/header state across chunks; results surface via callbacks. */
+function streamSegments(file,segMap,corrByIdx,cfg,sinks,onProgress,done,onError){
+  const {segNight,segRefTT,segSpeedHist,segData,seenXD,dowSeen,stats}=sinks;
+  const totalBytes=file.size;
+  Papa.parse(file,{
+    header:true,skipEmptyLines:true,worker:false,chunkSize:1024*1024*8,
+    chunk:(res,parser)=>{
+      if(!stats.headerChecked){
+        stats.headerChecked=true;
+        const f=res.meta.fields||[];
+        const hasTT=f.includes('travel_time_minutes')||f.includes('travel_time_seconds');
+        const hasXD=f.includes('xd_id')||f.includes('xd');
+        const hasTS=f.includes('measurement_tstamp');
+        stats.hasCval=f.includes('cvalue');
+        if(!hasTT||!hasXD||!hasTS){
+          stats.headerProblem='File 1 is missing required column(s): '+
+            [!hasXD?'xd_id':null,!hasTS?'measurement_tstamp':null,!hasTT?'travel_time_minutes / travel_time_seconds':null].filter(Boolean).join(', ')+
+            '. Found: '+f.join(', ');
+          parser.abort();return;
+        }
+      }
+      const data=res.data;
+      for(let i=0;i<data.length;i++){
+        const r=data[i];stats.rows++;
+        const xd=r.xd_id||r.xd;if(!xd)continue;
+        const key=String(xd).trim();
+        seenXD.set(key,(seenXD.get(key)||0)+1);
+        const owners=segMap.get(key);if(!owners)continue;
+        stats.xdHits++;
+        let tt=parseFloat(r.travel_time_minutes);
+        if(!isFinite(tt)){const sec=parseFloat(r.travel_time_seconds);if(isFinite(sec))tt=sec/60;}
+        if(!isFinite(tt)||tt<=0)continue;
+        if(cfg.minC>0&&stats.hasCval){const cv=parseFloat(r.cvalue);if(!isFinite(cv)||cv<cfg.minC)continue;}
+        const ts=r.measurement_tstamp;if(!ts)continue;
+        const {dow,hour,d:dnum,key:tsK}=parseTs(ts);
+        if(tsK>=0){                                  // full file range (pre-filter, for diagnostics)
+          if(stats.tsMinK===null||tsK<stats.tsMinK){stats.tsMinK=tsK;stats.tsMin=ts;}
+          if(stats.tsMaxK===null||tsK>stats.tsMaxK){stats.tsMaxK=tsK;stats.tsMax=ts;}
+        }
+        if(dnum<cfg.dFrom||dnum>cfg.dTo)continue;     // analysis date-range filter (inclusive)
+        const mi=state.segMiles[key]||0;
+        const refSpd=parseFloat(r.reference_speed);
+        stats.matched++;
+        segData.add(key);
+        const spdV=parseFloat(r.speed);
+        if(isFinite(spdV)&&spdV>0){
+          let hh=segSpeedHist.get(key);
+          if(!hh){hh=new Uint32Array(161);segSpeedHist.set(key,hh);}
+          hh[Math.min(160,Math.round(spdV))]++;
+        }
+        // per-segment night reference + fallback (once per row, not per owner)
+        if(dow>=0)dowSeen.add(dow);
+        if(cfg.dows.has(dow))stats.dowKept++;
+        if(hour>=0&&inNight(hour,cfg.nightS,cfg.nightE)){
+          let arr=segNight.get(key);
+          if(!arr){arr=[];segNight.set(key,arr);}
+          arr.push(tt);
+        }
+        if(isFinite(refSpd)&&refSpd>0&&mi>0){
+          let f=segRefTT.get(key);
+          if(!f){f={s:0,n:0};segRefTT.set(key,f);}
+          f.s+=mi/refSpd*60;f.n++;
+        }
+        for(const ci of owners){
+          const c=corrByIdx.get(ci);if(!c)continue;
+          let b=c.buckets.get(ts);
+          if(!b){b={tt:0,mi:0,m0:0,m1:0};c.buckets.set(ts,b);}
+          b.tt+=tt;b.mi+=mi;
+          if(!c.bigMask){
+            const k=c.segIdx.get(key);
+            if(k<26)b.m0|=(1<<k);else b.m1|=(1<<(k-26));
+          }
+        }
+      }
+      if(onProgress)onProgress(res.meta.cursor,totalBytes,stats);
+    },
+    complete:()=>done(stats),
+    error:err=>{ if(onError)onError(err); }
+  });
+}
+
 function processData(){
   const btn=document.getElementById('processBtn');
   btn.disabled=true;btn.innerHTML='<span>⏳</span> Processing…';
   document.getElementById('progWrap').style.display='block';
+
+  // drop any leftover polygon selection so its pseudo-corridors aren't re-streamed as real ones
+  if(state.corridors)state.corridors=state.corridors.filter(c=>c.idx<SELECTION_IDX_BASE);
+  delete state.customSel;
 
   const cfg={
     am:[+amStart.value,+amEnd.value],md:[+mdStart.value,+mdEnd.value],
@@ -1407,100 +1520,32 @@ function processData(){
   const seenXD=new Map();       // every xd_id present in File 1 -> row count
   const segData=new Set();      // corridor segments that contributed >=1 usable record
   const segSpeedHist=new Map(); // xd -> Uint32Array(161) speed histogram (matched segs only)
-  let tsMin=null,tsMax=null,tsMinK=null,tsMaxK=null,dowKept=0;
-
-  const totalBytes=state.file1.size;
-  let rows=0,matched=0,xdHits=0,headerChecked=false,headerProblem=null,hasCval=false;
+  const stats={rows:0,matched:0,xdHits:0,tsMin:null,tsMax:null,tsMinK:null,tsMaxK:null,
+    dowKept:0,headerChecked:false,headerProblem:null,hasCval:false};
   const t0=performance.now();
+  const corrByIdx=new Map(state.corridors.map(c=>[c.idx,c]));
+  const sinks={segNight,segRefTT,segSpeedHist,segData,seenXD,dowSeen,stats};
 
-  Papa.parse(state.file1,{
-    header:true,skipEmptyLines:true,worker:false,chunkSize:1024*1024*8,
-    chunk:(res,parser)=>{
-      if(!headerChecked){
-        headerChecked=true;
-        const f=res.meta.fields||[];
-        const hasTT=f.includes('travel_time_minutes')||f.includes('travel_time_seconds');
-        const hasXD=f.includes('xd_id')||f.includes('xd');
-        const hasTS=f.includes('measurement_tstamp');
-        hasCval=f.includes('cvalue');
-        if(!hasTT||!hasXD||!hasTS){
-          headerProblem='File 1 is missing required column(s): '+
-            [!hasXD?'xd_id':null,!hasTS?'measurement_tstamp':null,!hasTT?'travel_time_minutes / travel_time_seconds':null].filter(Boolean).join(', ')+
-            '. Found: '+f.join(', ');
-          parser.abort();return;
-        }
-      }
-      const data=res.data;
-      for(let i=0;i<data.length;i++){
-        const r=data[i];rows++;
-        const xd=r.xd_id||r.xd;if(!xd)continue;
-        const key=String(xd).trim();
-        seenXD.set(key,(seenXD.get(key)||0)+1);
-        const owners=segMap.get(key);if(!owners)continue;
-        xdHits++;
-        let tt=parseFloat(r.travel_time_minutes);
-        if(!isFinite(tt)){const sec=parseFloat(r.travel_time_seconds);if(isFinite(sec))tt=sec/60;}
-        if(!isFinite(tt)||tt<=0)continue;
-        if(cfg.minC>0&&hasCval){const cv=parseFloat(r.cvalue);if(!isFinite(cv)||cv<cfg.minC)continue;}
-        const ts=r.measurement_tstamp;if(!ts)continue;
-        const {dow,hour,d:dnum,key:tsK}=parseTs(ts);
-        if(tsK>=0){                                  // full file range (pre-filter, for diagnostics)
-          if(tsMinK===null||tsK<tsMinK){tsMinK=tsK;tsMin=ts;}
-          if(tsMaxK===null||tsK>tsMaxK){tsMaxK=tsK;tsMax=ts;}
-        }
-        if(dnum<cfg.dFrom||dnum>cfg.dTo)continue;     // analysis date-range filter (inclusive)
-        const mi=state.segMiles[key]||0;
-        const refSpd=parseFloat(r.reference_speed);
-        matched++;
-        segData.add(key);
-        const spdV=parseFloat(r.speed);
-        if(isFinite(spdV)&&spdV>0){
-          let hh=segSpeedHist.get(key);
-          if(!hh){hh=new Uint32Array(161);segSpeedHist.set(key,hh);}
-          hh[Math.min(160,Math.round(spdV))]++;
-        }
-        // per-segment night reference + fallback (once per row, not per owner)
-        if(dow>=0)dowSeen.add(dow);
-        if(cfg.dows.has(dow))dowKept++;
-        if(hour>=0&&inNight(hour,cfg.nightS,cfg.nightE)){
-          let arr=segNight.get(key);
-          if(!arr){arr=[];segNight.set(key,arr);}
-          arr.push(tt);
-        }
-        if(isFinite(refSpd)&&refSpd>0&&mi>0){
-          let f=segRefTT.get(key);
-          if(!f){f={s:0,n:0};segRefTT.set(key,f);}
-          f.s+=mi/refSpd*60;f.n++;
-        }
-        for(const ci of owners){
-          const c=state.corridors[ci];
-          let b=c.buckets.get(ts);
-          if(!b){b={tt:0,mi:0,m0:0,m1:0};c.buckets.set(ts,b);}
-          b.tt+=tt;b.mi+=mi;
-          if(!c.bigMask){
-            const k=c.segIdx.get(key);
-            if(k<26)b.m0|=(1<<k);else b.m1|=(1<<(k-26));
-          }
-        }
-      }
-      const pct=Math.min(99,Math.round(res.meta.cursor/totalBytes*100));
+  streamSegments(state.file1,segMap,corrByIdx,cfg,sinks,
+    (cursor,total)=>{
+      const pct=Math.min(99,Math.round(cursor/total*100));
       progFill.style.width=pct+'%';
-      progLabel.textContent=`Reading travel-time database… ${pct}%  (${rows.toLocaleString()} rows, ${matched.toLocaleString()} matched)`;
+      progLabel.textContent=`Reading travel-time database… ${pct}%  (${stats.rows.toLocaleString()} rows, ${stats.matched.toLocaleString()} matched)`;
     },
-    complete:()=>{
+    ()=>{
       const btn2=document.getElementById('processBtn');
-      if(headerProblem){
-        progLabel.textContent='✗ '+headerProblem;
+      if(stats.headerProblem){
+        progLabel.textContent='✗ '+stats.headerProblem;
         progFill.style.width='0%';
         btn2.disabled=false;btn2.innerHTML='<span>▶</span> Process Data';
         toast('Processing stopped — check File 1 columns');
         showBoot(false);setView('upload');
         return;
       }
-      if(matched===0){
-        progLabel.textContent = xdHits===0
-          ? `✗ ${rows.toLocaleString()} rows read, but no xd_id in File 1 matches any segment in File 3. Check that the corridor xd_seg_id lists and the RITIS download cover the same segments.`
-          : `✗ ${rows.toLocaleString()} rows read and ${xdHits.toLocaleString()} matched segments, but no usable travel-time values were found. Check the travel_time column and C-value filter.`;
+      if(stats.matched===0){
+        progLabel.textContent = stats.xdHits===0
+          ? `✗ ${stats.rows.toLocaleString()} rows read, but no xd_id in File 1 matches any segment in File 3. Check that the corridor xd_seg_id lists and the RITIS download cover the same segments.`
+          : `✗ ${stats.rows.toLocaleString()} rows read and ${stats.xdHits.toLocaleString()} matched segments, but no usable travel-time values were found. Check the travel_time column and C-value filter.`;
         progFill.style.width='0%';
         btn2.disabled=false;btn2.innerHTML='<span>▶</span> Process Data';
         toast('Processing stopped — no usable records');
@@ -1508,14 +1553,101 @@ function processData(){
         return;
       }
       progLabel.textContent='Aggregating corridors…';
-      const diag={seenXD,segData,segSpeedHist,tsMin,tsMax,dowKept,segMap};
-      setTimeout(()=>finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag),30);
+      const diag={seenXD,segData,segSpeedHist,tsMin:stats.tsMin,tsMax:stats.tsMax,dowKept:stats.dowKept,segMap};
+      setTimeout(()=>finalize(cfg,stats.rows,stats.matched,t0,segNight,segRefTT,dowSeen,diag),30);
     },
-    error:err=>{
+    err=>{
       progLabel.textContent='Error: '+err.message;
       btn.disabled=false;btn.innerHTML='<span>▶</span> Process Data';
     }
+  );
+}
+
+// One directional corridor → its result object. Computes per-segment refs (c.refs/c.refTT,
+// persisted for Before & After) then aggregates c.buckets into delays/hourly/speed metrics.
+// Shared by finalize (real corridors) and the polygon-selection rebuild.
+function buildDirResult(c,cfg,segRef25,segRefTT,segData){
+  // per-segment reference: night 25th pct → INRIX reference speed → mileage share of known refs
+  const refs=c.segs.map(id=>{
+    let r=segRef25.get(id);
+    if(!isFinite(r)){const f=segRefTT.get(id);if(f&&f.n>0)r=f.s/f.n;}
+    return isFinite(r)?r:NaN;
   });
+  let knownRef=0,knownMi=0;
+  refs.forEach((r,k)=>{if(isFinite(r)){knownRef+=r;knownMi+=state.segMiles[c.segs[k]]||0;}});
+  const perMile=knownMi>0?knownRef/knownMi:NaN;
+  refs.forEach((r,k)=>{if(!isFinite(r))refs[k]=isFinite(perMile)?perMile*(state.segMiles[c.segs[k]]||0):0;});
+  const refTT=refs.reduce((a,b)=>a+b,0);          // corridor free-flow = sum of segment refs
+  c.refs=refs;c.refTT=refTT;                      // persist for the Before & After study (re-aggregate windows)
+
+  const hourly=Array.from({length:24},()=>({s:0,n:0}));
+  const periodDelays={AM:[],MD:[],PM:[]},allDelays=[];
+  const spArr=[],spPeriod={AM:[],MD:[],PM:[]};
+
+  c.buckets.forEach((b,ts)=>{
+    const {dow,hour}=parseTs(ts);
+    if(hour<0)return;
+    // reference for the segments that actually reported in this interval
+    let refRep;
+    if(c.bigMask){refRep=refTT*(c.totalMiles>0?b.mi/c.totalMiles:0);}
+    else{
+      refRep=0;
+      let m=b.m0;for(let k=0;m;k++,m>>>=1)if(m&1)refRep+=refs[k];
+      m=b.m1;for(let k=26;m;k++,m>>>=1)if(m&1)refRep+=refs[k];
+    }
+    const delay=b.tt-refRep;                       // missing segments assumed at free flow
+    if(cfg.dows.has(dow)){
+      hourly[hour].s+=refTT+delay;hourly[hour].n++;  // full-corridor-equivalent TT
+      if(b.tt>0&&b.mi>0)spArr.push(b.mi*60/b.tt);    // space-mean speed (mph) of reporting portion
+    }
+    if(!cfg.dows.has(dow))return;
+    let p=null;
+    if(hour>=cfg.am[0]&&hour<cfg.am[1])p='AM';
+    else if(hour>=cfg.md[0]&&hour<cfg.md[1])p='MD';
+    else if(hour>=cfg.pm[0]&&hour<cfg.pm[1])p='PM';
+    if(p){
+      periodDelays[p].push(delay);allDelays.push(delay);
+      if(b.tt>0&&b.mi>0)spPeriod[p].push(b.mi*60/b.tt);
+    }
+  });
+
+  const avg=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:NaN;
+  spArr.sort((a,b)=>a-b);
+  const med=a=>{a.sort((x,y)=>x-y);return quantile(a,0.5);};
+  return {
+    idx:c.idx,name:c.name,bearing:c.bearing,nSignals:c.nSignals,
+    totalMiles:c.totalMiles,nSegs:c.segs.length,
+    segsWithData:c.segs.filter(id=>segData.has(id)).length,
+    nObs:allDelays.length,refTT,
+    amAvg:avg(periodDelays.AM),mdAvg:avg(periodDelays.MD),pmAvg:avg(periodDelays.PM),
+    delays:allDelays,
+    hourly:hourly.map(h=>h.n?h.s/h.n:null),
+    spd:{n:spArr.length,mean:avg(spArr),
+      p5:quantile(spArr,0.05),p15:quantile(spArr,0.15),p25:quantile(spArr,0.25),p50:quantile(spArr,0.5),
+      p75:quantile(spArr,0.75),p85:quantile(spArr,0.85),p95:quantile(spArr,0.95),
+      am50:med(spPeriod.AM),md50:med(spPeriod.MD),pm50:med(spPeriod.PM)}
+  };
+}
+
+// Pool one System Name's directional results → the system-level scoring object.
+// Shared by finalize and the polygon-selection rebuild.
+function poolDirsToSystem(name,ds){
+  const nSignals=Math.max(...ds.map(d=>d.nSignals))||1;
+  const mAvg=k=>{const v=ds.map(d=>d[k]).filter(isFinite);return v.length?v.reduce((a,b)=>a+b,0)/v.length:NaN;};
+  const pooled=[];
+  ds.forEach(d=>{for(const v of d.delays)pooled.push(v);});
+  pooled.sort((a,b)=>a-b);
+  const med=quantile(pooled,0.5);
+  const iqr=quantile(pooled,0.75)-quantile(pooled,0.25);
+  return {
+    name,dirs:ds,nSignals,
+    amInt:mAvg('amAvg')/nSignals,mdInt:mAvg('mdAvg')/nSignals,pmInt:mAvg('pmAvg')/nSignals,
+    medianDelay:med,iqrDelay:iqr,
+    normDelay:med/nSignals*60,   // Corridor_Norm_delay (ave speed) — seconds per intersection
+    normIQR:iqr/nSignals,        // Corridor_NormalizedIQR — minutes per intersection
+    hasData:pooled.length>0,nObsPooled:pooled.length,
+    T:24.4,AADT:20000,score:0,rank:0
+  };
 }
 
 function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
@@ -1530,97 +1662,17 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
   });
   state.segRef25=segRef25;
 
-  const results=[];
-  state.corridors.forEach(c=>{
-    // per-segment reference: night 25th pct → INRIX reference speed → mileage share of known refs
-    const refs=c.segs.map(id=>{
-      let r=segRef25.get(id);
-      if(!isFinite(r)){const f=segRefTT.get(id);if(f&&f.n>0)r=f.s/f.n;}
-      return isFinite(r)?r:NaN;
-    });
-    let knownRef=0,knownMi=0;
-    refs.forEach((r,k)=>{if(isFinite(r)){knownRef+=r;knownMi+=state.segMiles[c.segs[k]]||0;}});
-    const perMile=knownMi>0?knownRef/knownMi:NaN;
-    refs.forEach((r,k)=>{if(!isFinite(r))refs[k]=isFinite(perMile)?perMile*(state.segMiles[c.segs[k]]||0):0;});
-    const refTT=refs.reduce((a,b)=>a+b,0);          // corridor free-flow = sum of segment refs
-    c.refs=refs;c.refTT=refTT;                      // persist for the Before & After study (re-aggregate windows)
-
-    const hourly=Array.from({length:24},()=>({s:0,n:0}));
-    const periodDelays={AM:[],MD:[],PM:[]},allDelays=[];
-    const spArr=[],spPeriod={AM:[],MD:[],PM:[]};
-
-    c.buckets.forEach((b,ts)=>{
-      const {dow,hour}=parseTs(ts);
-      if(hour<0)return;
-      // reference for the segments that actually reported in this interval
-      let refRep;
-      if(c.bigMask){refRep=refTT*(c.totalMiles>0?b.mi/c.totalMiles:0);}
-      else{
-        refRep=0;
-        let m=b.m0;for(let k=0;m;k++,m>>>=1)if(m&1)refRep+=refs[k];
-        m=b.m1;for(let k=26;m;k++,m>>>=1)if(m&1)refRep+=refs[k];
-      }
-      const delay=b.tt-refRep;                       // missing segments assumed at free flow
-      if(cfg.dows.has(dow)){
-        hourly[hour].s+=refTT+delay;hourly[hour].n++;  // full-corridor-equivalent TT
-        if(b.tt>0&&b.mi>0)spArr.push(b.mi*60/b.tt);    // space-mean speed (mph) of reporting portion
-      }
-      if(!cfg.dows.has(dow))return;
-      let p=null;
-      if(hour>=cfg.am[0]&&hour<cfg.am[1])p='AM';
-      else if(hour>=cfg.md[0]&&hour<cfg.md[1])p='MD';
-      else if(hour>=cfg.pm[0]&&hour<cfg.pm[1])p='PM';
-      if(p){
-        periodDelays[p].push(delay);allDelays.push(delay);
-        if(b.tt>0&&b.mi>0)spPeriod[p].push(b.mi*60/b.tt);
-      }
-    });
-
-    const avg=a=>a.length?a.reduce((s,v)=>s+v,0)/a.length:NaN;
-    spArr.sort((a,b)=>a-b);
-    const med=a=>{a.sort((x,y)=>x-y);return quantile(a,0.5);};
-    results.push({
-      idx:c.idx,name:c.name,bearing:c.bearing,nSignals:c.nSignals,
-      totalMiles:c.totalMiles,nSegs:c.segs.length,
-      segsWithData:c.segs.filter(id=>diag.segData.has(id)).length,
-      nObs:allDelays.length,refTT,
-      amAvg:avg(periodDelays.AM),mdAvg:avg(periodDelays.MD),pmAvg:avg(periodDelays.PM),
-      delays:allDelays,
-      hourly:hourly.map(h=>h.n?h.s/h.n:null),
-      spd:{n:spArr.length,mean:avg(spArr),
-        p5:quantile(spArr,0.05),p15:quantile(spArr,0.15),p25:quantile(spArr,0.25),p50:quantile(spArr,0.5),
-        p75:quantile(spArr,0.75),p85:quantile(spArr,0.85),p95:quantile(spArr,0.95),
-        am50:med(spPeriod.AM),md50:med(spPeriod.MD),pm50:med(spPeriod.PM)}
-    });
-  });
+  const results=state.corridors.map(c=>buildDirResult(c,cfg,segRef25,segRefTT,diag.segData));
   state.results=results;
 
   // combine directions per System Name — pool all delay observations, then median & IQR
   const sysMap=new Map();
   results.forEach(r=>{
-    if(!sysMap.has(r.name))sysMap.set(r.name,{name:r.name,dirs:[]});
-    sysMap.get(r.name).dirs.push(r);
+    if(!sysMap.has(r.name))sysMap.set(r.name,[]);
+    sysMap.get(r.name).push(r);
   });
   const systems=[];
-  sysMap.forEach(s=>{
-    const ds=s.dirs;
-    const nSignals=Math.max(...ds.map(d=>d.nSignals))||1;
-    const mAvg=k=>{const v=ds.map(d=>d[k]).filter(isFinite);return v.length?v.reduce((a,b)=>a+b,0)/v.length:NaN;};
-    const pooled=[];
-    ds.forEach(d=>{for(const v of d.delays)pooled.push(v);});
-    pooled.sort((a,b)=>a-b);
-    const med=quantile(pooled,0.5);
-    const iqr=quantile(pooled,0.75)-quantile(pooled,0.25);
-    systems.push({
-      name:s.name,dirs:ds,nSignals,
-      amInt:mAvg('amAvg')/nSignals,mdInt:mAvg('mdAvg')/nSignals,pmInt:mAvg('pmAvg')/nSignals,
-      medianDelay:med,iqrDelay:iqr,
-      normDelay:med/nSignals*60,   // Corridor_Norm_delay (ave speed) — seconds per intersection
-      normIQR:iqr/nSignals,        // Corridor_NormalizedIQR — minutes per intersection
-      hasData:pooled.length>0,nObsPooled:pooled.length,
-      T:24.4,AADT:20000,score:0,rank:0
-    });
-  });
+  sysMap.forEach((ds,name)=>systems.push(poolDirsToSystem(name,ds)));
   state.systems=systems;
 
   // ---- coverage diagnostics: which downloaded segments belong to no corridor? ----
@@ -1683,7 +1735,7 @@ function finalize(cfg,rows,matched,t0,segNight,segRefTT,dowSeen,diag){
 
 /* ---------- KPI cards ---------- */
 function renderKPIs(){
-  const S=state.systems?state.systems.filter(s=>s.hasData):[];
+  const S=rankSys();
   const f=(v,d=1)=>isFinite(v)?v.toFixed(d):'—';
   const mean=a=>{const v=a.filter(isFinite);return v.length?v.reduce((x,y)=>x+y,0)/v.length:NaN;};
   let kpis;
@@ -1727,13 +1779,15 @@ function recalcScores(){
     // OCRA formula: Q = O × √(AADT/1000) × P × √T  (raw score, exactly as in Prioritization_Spreadsheet.xlsm)
     s.score=d*q*Math.sqrt(Math.max(s.AADT,0)/1000)*Math.sqrt(Math.max(s.T,0));
   });
-  const withData=state.systems.filter(s=>s.hasData),
-        noData=state.systems.filter(s=>!s.hasData);
+  const withData=state.systems.filter(s=>s.hasData&&!s.isCustom),
+        noData=state.systems.filter(s=>!s.hasData&&!s.isCustom),
+        custom=state.systems.filter(s=>s.isCustom);   // ad-hoc polygon selection — kept, but never ranked
   withData.sort((a,b)=>b.score-a.score);
   withData.forEach((s,i)=>s.rank=i+1);
   noData.sort((a,b)=>a.name.localeCompare(b.name));
   noData.forEach(s=>{s.rank=0;s.score=0;});
-  state.systems=[...withData,...noData];
+  custom.forEach(s=>{s.rank=0;});                       // appended last so real-corridor indices stay stable
+  state.systems=[...withData,...noData,...custom];
   renderOCRA();
   renderKPIs();
   drawScoreChart();drawDelayChart();drawScatter();
@@ -1755,8 +1809,8 @@ function medal(rank){
 }
 function renderOCRA(){
   const tb=document.getElementById('ocraBody');tb.innerHTML='';
-  const ranked=state.systems.filter(s=>s.hasData);
-  const noData=state.systems.filter(s=>!s.hasData);
+  const ranked=rankSys();
+  const noData=state.systems.filter(s=>!s.hasData&&!s.isCustom);
   const maxScore=Math.max(...ranked.map(s=>s.score),0)||1;
   // warn while AADT/T are still at placeholder defaults — the score depends on them
   const warn=document.getElementById('ocraDefaultWarn');
@@ -1768,7 +1822,7 @@ function renderOCRA(){
     }else{warn.style.display='none';}
   }
   state.systems.forEach((s,i)=>{
-    if(!s.hasData)return;
+    if(!s.hasData||s.isCustom)return;
     const refTxt=s.dirs.map(d=>isFinite(d.refTT)?d.refTT.toFixed(2):'—').join(' / ');
     const tr=document.createElement('tr');tr.dataset.i=i;
     tr.innerHTML=`
@@ -1809,7 +1863,7 @@ Chart.defaults.color='#5a6885';
 function drawScoreChart(){
   const ctx=document.getElementById('scoreChart');
   if(scoreChart)scoreChart.destroy();
-  const S=state.systems.filter(s=>s.hasData);
+  const S=rankSys();
   scoreChart=new Chart(ctx,{type:'bar',data:{
     labels:S.map(s=>s.name),
     datasets:[{label:'Combined Score',data:S.map(s=>s.score),
@@ -1825,7 +1879,7 @@ function drawScoreChart(){
 function drawDelayChart(){
   const ctx=document.getElementById('delayChart');
   if(delayChart)delayChart.destroy();
-  const S=state.systems.filter(s=>s.hasData);
+  const S=rankSys();
   const labels=S.map(s=>s.name);
   const toSec=v=>isFinite(v)?v*60:null;
   delayChart=new Chart(ctx,{type:'bar',data:{labels,datasets:[
@@ -1842,7 +1896,7 @@ function buildDrillSelect(){
   const sel=document.getElementById('corrSelect');
   const cur=sel.value;
   sel.innerHTML='';
-  state.systems.filter(s=>s.hasData).forEach(s=>{
+  rankSys().forEach(s=>{
     const o=document.createElement('option');
     o.value=s.name;o.textContent=`#${s.rank} · ${s.name}`;
     sel.appendChild(o);
@@ -1934,7 +1988,7 @@ const quadrantPlugin={
 function drawScatter(){
   const ctx=document.getElementById('scatterChart');
   if(scatterChart)scatterChart.destroy();
-  const S=state.systems.filter(s=>s.hasData);
+  const S=rankSys();
   const mx=median(S.map(s=>s.normDelay)), my=median(S.map(s=>s.normIQR));
   scatterChart=new Chart(ctx,{type:'scatter',data:{datasets:[{
     label:'Corridors',
@@ -2044,6 +2098,255 @@ function buildMapLegend(metric,drawList){
   legend.innerHTML=html;
 }
 function roadOf(name){return String(name).split('_')[0].trim();}
+
+/* ============================================================
+   TARGETED SEGMENT SELECTION (draw a polygon on the map → pseudo-corridor)
+   The selection re-uses the exact corridor pipeline: re-stream state.file1 filtered to the
+   chosen segments → buildDirResult → poolDirsToSystem, then registers a single isCustom system
+   that flows into every picker (Explore/Reports/Before & After) but is excluded from ranking.
+   ============================================================ */
+const SELECTION_IDX_BASE=100000;          // pseudo-corridor idx range (kept clear of real corridors)
+const SELECTION_NAME='✏️ Custom selection';
+
+// ray-casting point-in-polygon; poly = [[lat,lng], …]
+function pointInPolygon(lat,lng,poly){
+  let inside=false;
+  for(let i=0,j=poly.length-1;i<poly.length;j=i++){
+    const yi=poly[i][0],xi=poly[i][1],yj=poly[j][0],xj=poly[j][1];
+    if(((yi>lat)!==(yj>lat))&&(lng<(xj-xi)*(lat-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+// full polyline for a segment: geojson line if present, else File-2 endpoints, else null
+function segPolyline(xd){
+  const ln=state.segLine&&state.segLine[xd];
+  if(ln&&ln.length>1)return ln;
+  const g=state.segGeo&&state.segGeo[xd];
+  return g?[[g[0],g[1]],[g[2],g[3]]]:null;
+}
+function segMidpoint(xd){ const ln=segPolyline(xd); return ln?ln[Math.floor(ln.length/2)]:null; }
+// fallback travel direction from a segment's geometry when File 2 has no bearing
+function bearingFromGeo(xd){
+  const ln=segPolyline(xd); if(!ln||ln.length<2)return '';
+  const a=ln[0],b=ln[ln.length-1],dLat=b[0]-a[0],dLon=b[1]-a[1];
+  return Math.abs(dLon)>=Math.abs(dLat)?(dLon>=0?'EB':'WB'):(dLat>=0?'NB':'SB');
+}
+// xd → its owning directional corridor (first owner). Each File-3 corridor already represents one
+// coherent travel direction (even where the road bends), so this is the faithful basis for grouping.
+function segToCorr(){
+  const m=new Map();
+  (state.corridors||[]).forEach(c=>{ if(c.idx>=SELECTION_IDX_BASE)return; c.segs.forEach(id=>{ if(!m.has(id))m.set(id,c); }); });
+  return m;
+}
+// group selected segments into directional sub-corridors. Primary key = owning corridor (so both
+// directions of a road become two groups, and a bending one-way corridor stays a single group);
+// segments with no owner fall back to per-segment bearing.
+function splitByDirection(xds){
+  const s2c=segToCorr();
+  const byKey=new Map(); let dropped=0;
+  xds.forEach(xd=>{
+    const c=s2c.get(xd); let key,bearing;
+    if(c){ key='c'+c.idx; bearing=c.bearing||(state.segBearing&&state.segBearing[xd])||bearingFromGeo(xd); }
+    else { const br=(state.segBearing&&state.segBearing[xd])||bearingFromGeo(xd); if(!br){dropped++;return;} key='b'+br; bearing=br; }
+    let g=byKey.get(key); if(!g){g={bearing,segs:[]};byKey.set(key,g);} g.segs.push(xd);
+  });
+  return {groups:[...byKey.values()],dropped};
+}
+function signalsInPolygon(poly){ return (state.signals||[]).filter(s=>pointInPolygon(s.lat,s.lng,poly)).length; }
+// candidate segments = the corridor segments drawn on the map (these are exactly the ones with probe
+// data, since latest.csv is filtered to the corridor segment set)
+function selectionCandidates(){
+  const set=new Set();
+  (state.corridors||[]).forEach(c=>{ if(c.idx<SELECTION_IDX_BASE)c.segs.forEach(id=>set.add(id)); });
+  return set;
+}
+function selectSegmentsByPolygon(poly){
+  const out=new Set();
+  selectionCandidates().forEach(xd=>{ const m=segMidpoint(xd); if(m&&pointInPolygon(m[0],m[1],poly))out.add(xd); });
+  return out;
+}
+
+const avgDir=(rs,k)=>{const v=rs.map(r=>r[k]).filter(isFinite);return v.length?v.reduce((a,b)=>a+b,0)/v.length:NaN;};
+
+// Build (or replace) the custom selection: re-stream file1 for the chosen segments, then register it.
+function buildSelectionSystem(xdSet,polygon){
+  if(!state.file1||!state.systems||!state.cfg){toast('Process data first');return;}
+  clearSelectionSystem(false);                                   // drop any prior selection (no UI churn yet)
+  const xds=[...xdSet].filter(id=>(state.segMiles&&state.segMiles[id])>0);
+  if(!xds.length){toast('No segments with distance data inside the shape');return;}
+  const {groups,dropped}=splitByDirection(xds);
+  if(!groups.length){toast('Could not determine a travel direction for the selected segments');return;}
+  if(dropped)toast(dropped+' segment(s) without direction/geometry were skipped');
+
+  const cfg=state.cfg, nSig=signalsInPolygon(polygon)||1;
+  // pseudo-corridor objects mirror state.corridors entries plus the fields the pipeline adds
+  const corrs=groups.map((g,k)=>{
+    const segs=g.segs;
+    const c={idx:SELECTION_IDX_BASE+k,name:SELECTION_NAME,bearing:g.bearing,segs,nSignals:nSig,
+      totalMiles:segs.reduce((s,id)=>s+(state.segMiles[id]||0),0),
+      buckets:new Map(),segIdx:new Map(),bigMask:segs.length>52};
+    segs.forEach((id,i)=>c.segIdx.set(id,i));
+    return c;
+  });
+  const segMap=new Map();
+  corrs.forEach(c=>c.segs.forEach(id=>{if(!segMap.has(id))segMap.set(id,[]);segMap.get(id).push(c.idx);}));
+  const corrByIdx=new Map(corrs.map(c=>[c.idx,c]));
+
+  // local sinks — never mutate the global segRef25/segSpeedHist that real corridors depend on
+  const segNight=new Map(),segRefTT=new Map();
+  const sinks={segNight,segRefTT,segSpeedHist:new Map(),segData:new Set(),seenXD:new Map(),dowSeen:new Set(),
+    stats:{rows:0,matched:0,xdHits:0,tsMin:null,tsMax:null,tsMinK:null,tsMaxK:null,dowKept:0,headerChecked:false,headerProblem:null,hasCval:false}};
+
+  setSelBusy(true,'Building selection from the travel-time data…');
+  streamSegments(state.file1,segMap,corrByIdx,cfg,sinks,null,
+    ()=>{
+      const segRef25=new Map();
+      segNight.forEach((arr,xd)=>{arr.sort((a,b)=>a-b);segRef25.set(xd,quantile(arr,0.25));});
+      const dirResults=corrs.map(c=>buildDirResult(c,cfg,segRef25,segRefTT,sinks.segData));
+      const sys=poolDirsToSystem(SELECTION_NAME,dirResults);
+      sys.isCustom=true; sys.rank=0; sys.score=ocraScore(sys);
+      if(!sys.hasData){ setSelBusy(false); setSelHint(''); renderSelectionInfo(); clearSelectionOverlay(); toast('No probe data for the selected segments'); return; }
+      state.corridors.push(...corrs);
+      state.results.push(...dirResults);
+      state.systems.push(sys);
+      state._corrByIdx=new Map(state.corridors.map(c=>[c.idx,c]));
+      state.customSel={sys,corrs,results:dirResults,xds,polygon,nSignals:nSig};
+      // auto-select in Explore, refresh every picker
+      state.msSel=state.msSel||{};
+      state.msSel['drillPick']=new Set([SELECTION_NAME]);
+      if(!state.msSel['cmpPick'])state.msSel['cmpPick']=new Set();
+      state.msSel['cmpPick'].add(SELECTION_NAME);
+      ['drillPick','cmpPick','speedPick','rptPick','baPick'].forEach(id=>{ if(document.getElementById(id))buildPicker(id); });
+      setSelBusy(false); setSelHint('');
+      renderSelectionInfo();
+      drawSelectionOverlay();
+      toast(xds.length+' segments selected · '+dirResults.length+' direction'+(dirResults.length>1?'s':'')+' · '+nSig+' signal'+(nSig===1?'':'s'));
+      analyzeSelection();
+    },
+    err=>{ setSelBusy(false); setSelHint(''); toast('Selection error: '+err.message); }
+  );
+}
+function ocraScore(s){const d=isFinite(s.normDelay)?s.normDelay:0,q=isFinite(s.normIQR)?s.normIQR:0;return d*q*Math.sqrt(Math.max(s.AADT,0)/1000)*Math.sqrt(Math.max(s.T,0));}
+
+function clearSelectionSystem(refresh){
+  if(state.corridors)state.corridors=state.corridors.filter(c=>c.idx<SELECTION_IDX_BASE);
+  if(state.results)state.results=state.results.filter(r=>r.idx<SELECTION_IDX_BASE);
+  if(state.systems)state.systems=state.systems.filter(s=>!s.isCustom);
+  state._corrByIdx=new Map((state.corridors||[]).map(c=>[c.idx,c]));
+  if(state.msSel)Object.keys(state.msSel).forEach(id=>{const set=state.msSel[id];if(set&&set.delete)set.delete(SELECTION_NAME);});
+  delete state.customSel;
+  if(refresh){
+    ['drillPick','cmpPick','speedPick','rptPick','baPick'].forEach(id=>{ if(document.getElementById(id))buildPicker(id); });
+    renderSelectionInfo(); clearSelectionOverlay();
+    if(state.map)renderMap();
+    if(typeof drawDrilldown==='function')drawDrilldown();
+    if(typeof renderSpeed==='function')renderSpeed();
+    const cmpOut=document.getElementById('cmpOut'); if(cmpOut&&cmpOut.querySelector('table')&&pickedNames('cmpPick').length>=2)runCompare();
+    toast('Custom selection cleared');
+  }
+}
+// recompute the selection's per-signal metrics after the user overrides the signal count
+function onSelSignals(){
+  const cs=state.customSel; if(!cs)return;
+  const v=Math.max(1,parseInt((document.getElementById('selSignals')||{}).value)||1);
+  cs.nSignals=v; cs.sys.nSignals=v; cs.corrs.forEach(c=>c.nSignals=v); cs.results.forEach(r=>r.nSignals=v);
+  const sys=cs.sys;
+  sys.normDelay=sys.medianDelay/v*60; sys.normIQR=sys.iqrDelay/v;
+  sys.amInt=avgDir(cs.results,'amAvg')/v; sys.mdInt=avgDir(cs.results,'mdAvg')/v; sys.pmInt=avgDir(cs.results,'pmAvg')/v;
+  sys.score=ocraScore(sys);
+  if(typeof drawDrilldown==='function')drawDrilldown();
+  const cmpOut=document.getElementById('cmpOut'); if(cmpOut&&cmpOut.querySelector('table'))runCompare();
+  toast('Selection now uses '+v+' signal'+(v===1?'':'s'));
+}
+function analyzeSelection(){
+  if(!state.customSel)return;
+  state.msSel=state.msSel||{};
+  state.msSel['drillPick']=new Set([SELECTION_NAME]);
+  if(!state.msSel['cmpPick'])state.msSel['cmpPick']=new Set();
+  state.msSel['cmpPick'].add(SELECTION_NAME);
+  try{ if(state.map&&state.map.closePopup)state.map.closePopup(); }catch(e){}
+  setTimeout(()=>{ try{ setView('explore'); }catch(e){ console.error(e); } }, 0);
+}
+
+/* ---- selection map overlay + control-row helpers ---- */
+function drawSelectionOverlay(){
+  if(!state.map)return;
+  if(!state.selLayer)state.selLayer=L.layerGroup().addTo(state.map);
+  state.selLayer.clearLayers();
+  const cs=state.customSel; if(!cs)return;
+  if(cs.polygon&&cs.polygon.length>2)
+    L.polygon(cs.polygon,{color:'#7c3aed',weight:2,dashArray:'5,5',fill:true,fillColor:'#7c3aed',fillOpacity:.06,interactive:false}).addTo(state.selLayer);
+  cs.xds.forEach(xd=>{ const ln=segPolyline(xd); if(ln)L.polyline(ln,{color:'#7c3aed',weight:6,opacity:.85,interactive:false}).addTo(state.selLayer); });
+}
+function clearSelectionOverlay(){ if(state.selLayer)state.selLayer.clearLayers(); }
+function renderSelectionInfo(){
+  const info=document.getElementById('selInfo'); if(!info)return;
+  const cs=state.customSel;
+  if(!cs){ info.style.display='none'; return; }
+  info.style.display='inline-flex';
+  const sc=document.getElementById('selSegCount');
+  if(sc)sc.textContent=cs.xds.length+' segment'+(cs.xds.length===1?'':'s')+' · '+cs.results.length+' direction'+(cs.results.length>1?'s':'');
+  const si=document.getElementById('selSignals'); if(si)si.value=cs.nSignals;
+}
+function setSelHint(t){ const h=document.getElementById('selHint'); if(h)h.textContent=t||''; }
+function setSelBusy(busy,msg){
+  const b=document.getElementById('selDrawBtn'); if(b)b.disabled=!!busy;
+  if(busy)setSelHint(msg||'Working…');
+}
+
+/* ---- polygon drawing on the map ---- */
+function updateDrawButtons(drawing){
+  const d=document.getElementById('selDrawBtn'),f=document.getElementById('selFinishBtn'),c=document.getElementById('selCancelBtn');
+  if(d)d.classList.toggle('active',!!drawing);
+  if(f)f.style.display=drawing?'':'none';
+  if(c)c.style.display=drawing?'':'none';
+}
+function toggleDrawSelect(){
+  if(!state.map){toast('Open the Map tab first');return;}
+  if(state.draw&&state.draw.active){cancelDrawSelect();return;}
+  state.draw={active:true,pts:[],layer:L.layerGroup().addTo(state.map)};
+  state.map.getPane('overlayPane').style.pointerEvents='none';   // corridor lines/signals non-interactive while drawing
+  try{state.map.closePopup();}catch(e){}
+  if(state.map._container)L.DomUtil.addClass(state.map._container,'sel-drawing');
+  state.map.on('click',onDrawClick);
+  state.map.on('dblclick',onDrawDblClick);
+  try{state.map.doubleClickZoom.disable();}catch(e){}
+  updateDrawButtons(true);
+  setSelHint('Click the map to drop points around the segments you want. Double-click or “Finish” to close the shape.');
+}
+function onDrawClick(e){
+  const d=state.draw; if(!d||!d.active)return;
+  d.pts.push([e.latlng.lat,e.latlng.lng]);
+  redrawDrawPreview();
+  setSelHint(d.pts.length+' point'+(d.pts.length===1?'':'s')+' — add at least 3, then Finish.');
+}
+function onDrawDblClick(){ if(state.draw&&state.draw.active)finishDrawSelect(); }
+function redrawDrawPreview(){
+  const d=state.draw; if(!d||!d.layer)return; d.layer.clearLayers();
+  if(d.pts.length>1)L.polyline(d.pts.concat(d.pts.length>2?[d.pts[0]]:[]),{color:'#7c3aed',weight:2,dashArray:'5,5',interactive:false}).addTo(d.layer);
+  d.pts.forEach(p=>L.circleMarker(p,{radius:4,color:'#fff',weight:1.5,fillColor:'#7c3aed',fillOpacity:1,interactive:false}).addTo(d.layer));
+}
+function endDrawMode(){
+  const d=state.draw; if(!d)return;
+  state.map.off('click',onDrawClick); state.map.off('dblclick',onDrawDblClick);
+  try{state.map.doubleClickZoom.enable();}catch(e){}
+  if(state.map.getPane('overlayPane'))state.map.getPane('overlayPane').style.pointerEvents='';
+  if(state.map._container)L.DomUtil.removeClass(state.map._container,'sel-drawing');
+  if(d.layer)state.map.removeLayer(d.layer);
+  state.draw={active:false,pts:[]};
+  updateDrawButtons(false);
+}
+function cancelDrawSelect(){ endDrawMode(); setSelHint(''); }
+function finishDrawSelect(){
+  const d=state.draw; if(!d||!d.active)return;
+  const poly=d.pts.slice();
+  endDrawMode();
+  if(poly.length<3){ toast('Draw at least 3 points to make a shape'); setSelHint(''); return; }
+  const xdSet=selectSegmentsByPolygon(poly);
+  if(!xdSet.size){ toast('No segments fall inside the shape — try a larger area'); setSelHint(''); return; }
+  buildSelectionSystem(xdSet,poly);
+}
+
 function offsetRight(pts,off){    // shift a polyline to the right of travel → opposing directions separate
   if(!pts||pts.length<2)return pts;
   const out=[];
@@ -2075,10 +2378,10 @@ function renderMap(){
   }
   try{ if(state.map.closePopup)state.map.closePopup(); }catch(e){}   // drop any orphaned popup before redraw
   state.mapLayer.clearLayers();state.labelLayer.clearLayers();
-  let sys=state.systems.filter(s=>s.hasData);
+  let sys=rankSys();
   if(topN>0)sys=sys.slice().sort((a,b)=>a.rank-b.rank).slice(0,topN);
   let vals=sys.map(s=>({s,v:mapMetricVal(s,metric)})).filter(o=>o.v!=null);
-  const byRoad={};state.systems.filter(s=>s.hasData).forEach(s=>{(byRoad[roadOf(s.name)]=byRoad[roadOf(s.name)]||[]).push(s);});
+  const byRoad={};rankSys().forEach(s=>{(byRoad[roadOf(s.name)]=byRoad[roadOf(s.name)]||[]).push(s);});
   if(dirMode==='primary'){                       // keep only the higher-ranked direction per road
     const best={};vals.forEach(o=>{const r=roadOf(o.s.name);if(!best[r]||o.s.rank<best[r].s.rank)best[r]=o;});
     vals=Object.values(best);
@@ -2138,7 +2441,7 @@ function renderMap(){
   });
   state.mapBounds=allBounds;
   if(allBounds.length)state.map.fitBounds(allBounds,{padding:[28,28]});
-  buildMapJump(state.systems.filter(s=>s.hasData));
+  buildMapJump(rankSys());
   buildMapLegend(metric,drawList);
   renderSignals();
 }
@@ -2483,6 +2786,7 @@ function downloadSegSpeeds(){
 function downloadCorrSpeeds(){
   const rows=[['System Name','Bearing','n_intervals','mean_mph','p15_mph','p50_mph','p85_mph','p95_mph','AM_median_mph','MD_median_mph','PM_median_mph']];
   state.results.forEach(r=>{
+    if(r.idx>=SELECTION_IDX_BASE)return;        // keep the ad-hoc polygon selection out of jurisdiction exports
     if(!r.spd||!r.spd.n)return;
     rows.push([r.name,r.bearing,r.spd.n,fmt1(r.spd.mean),fmt1(r.spd.p15),fmt1(r.spd.p50),
       fmt1(r.spd.p85),fmt1(r.spd.p95),fmt1(r.spd.am50),fmt1(r.spd.md50),fmt1(r.spd.pm50)]);
@@ -2505,6 +2809,9 @@ const MS_ONCHANGE={                              // selection live-drives the Ex
 function buildPicker(id){ buildMultiSelect(id); }   // back-compat render entry
 
 function msSys(){ return state.systems?state.systems.filter(s=>s.hasData):[]; }
+// Systems eligible for OCRA ranking / KPIs / the colored map. Excludes the ad-hoc polygon
+// selection (isCustom), which is available in the pickers (msSys) but never ranked.
+function rankSys(){ return state.systems?state.systems.filter(s=>s.hasData&&!s.isCustom):[]; }
 
 function buildMultiSelect(id){
   const box=document.getElementById(id); if(!box)return;
@@ -2815,7 +3122,7 @@ function reportSelection(){
   if(!state.systems){toast('Process data first');return null;}
   const scope=document.querySelector('input[name=rptScope]:checked').value;
   let sel;
-  if(scope==='all')sel=state.systems.filter(s=>s.hasData);
+  if(scope==='all')sel=rankSys();
   else{
     const names=pickedNames('rptPick');
     if(!names.length){toast('Pick at least 1 corridor, or choose "Entire jurisdiction"');return null;}
@@ -2852,8 +3159,8 @@ function buildReportPDF(sel,scope){
   const dows=cfg.dows?[...cfg.dows].sort().map(d=>DOWS[d]).join(' / '):'';
   const dr=(cov.tsMin&&cov.tsMax)?`${cov.tsMin.slice(0,10)} to ${cov.tsMax.slice(0,10)}`:'n/a';
   const today=new Date().toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'});
-  const nAll=state.systems.filter(s=>s.hasData).length;
-  const noData=state.systems.filter(s=>!s.hasData);
+  const nAll=rankSys().length;
+  const noData=state.systems.filter(s=>!s.hasData&&!s.isCustom);
   const scopeLabel=scope==='all'?'Entire jurisdiction — all corridors with probe data':(sel.length+' selected corridor(s)');
   const palette=['#1d3f94','#f26822','#1d8a4e','#8e44ad'];
   const toc=[];
@@ -3137,7 +3444,7 @@ function speedPeriodConfigPdf(dirs){
               y:{ticks:{font:{size:11},autoSkip:false}}}}};
 }
 function speedDistConfigPdf(){
-  const sels=state.systems.filter(s=>s.hasData);
+  const sels=rankSys();
   const h=new Float64Array(161); sels.forEach(s=>{const ch=corridorSpeedHist(s);for(let v=0;v<161;v++)h[v]+=ch[v];});
   let maxV=10; for(let v=160;v>0;v--){if(h[v]>0){maxV=v;break;}} maxV=Math.min(85,maxV+3);
   const labels=Array.from({length:maxV+1},(_,v)=>v);
@@ -3354,7 +3661,7 @@ function baSelection(){
   if(!state.systems){toast('Process data first');return null;}
   const scope=document.querySelector('input[name=baScope]:checked').value;
   let sel;
-  if(scope==='all')sel=state.systems.filter(s=>s.hasData);
+  if(scope==='all')sel=rankSys();
   else{
     const names=pickedNames('baPick');
     if(!names.length){toast('Pick at least 1 corridor, or choose "Entire jurisdiction"');return null;}
@@ -4336,6 +4643,7 @@ function downloadROC(){
   const f=v=>isFinite(v)?String(v):'';
   let i=0;
   state.results.forEach(r=>{
+    if(r.idx>=SELECTION_IDX_BASE)return;        // keep the ad-hoc polygon selection out of jurisdiction exports
     const s=byName.get(r.name);if(!s)return;
     const dirIdx=s.dirs.indexOf(r);              // 0 → dir1 columns, 1 → dir2 columns
     const am=['',''],md=['',''],pm=['',''];
@@ -4367,6 +4675,7 @@ function downloadSpreadsheet(){
     'Corridor_Norm_delay (ave speed)','Corridor_NormalizedIQR','Combined Score'];
   const rows=[head];
   state.systems.forEach((s,i)=>{
+    if(s.isCustom)return;                        // ad-hoc polygon selection is not part of the ranked spreadsheet
     const len=Math.max(...s.dirs.map(d=>d.totalMiles));
     rows.push([s.hasData?s.rank:'no data',i+1,s.name,s.nSignals,len.toFixed(3),s.T,s.AADT,
       fmt(s.amInt,4),fmt(s.mdInt,4),fmt(s.pmInt,4),
@@ -4377,7 +4686,7 @@ function downloadSpreadsheet(){
 
 function downloadRanked(){
   const rows=[['Rank','System Name','Combined Score']];
-  state.systems.forEach(s=>rows.push([s.hasData?s.rank:'no data',s.name,s.hasData?fmt(s.score,2):'']));
+  state.systems.forEach(s=>{ if(s.isCustom)return; rows.push([s.hasData?s.rank:'no data',s.name,s.hasData?fmt(s.score,2):'']); });
   downloadCSV('Ranked_Summary.csv',rows);
 }
 
